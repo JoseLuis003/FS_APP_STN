@@ -20,6 +20,14 @@ correctamente (igual que la app original).
   flujo).
 - Al presionar INSTALAR se instala directo, sin diálogo de confirmación
   previo.
+- Arriba del botón INSTALAR siempre se ve la ruta exacta desde la que la
+  app está leyendo los instaladores en ese momento ("Instalando desde:
+  ..."), en **verde con "✓ Carpeta encontrada"** si esa carpeta existe
+  ahora mismo, o en **rojo con "⚠ Carpeta NO encontrada"** si no — así el
+  técnico sabe de un vistazo si puede darle INSTALAR con confianza, sin
+  tener que intentarlo y enterarse después por el log que la carpeta no
+  estaba. Este indicador se revisa solo cada pocos segundos (por ejemplo,
+  si conectas la USB después de abrir la app).
 - Mientras se instala algo, junto al texto "Instalando: ..." aparece una
   barra de progreso (modo indeterminado, ya que los instaladores silenciosos
   no reportan un % real de avance). Desaparece automáticamente al terminar.
@@ -55,10 +63,13 @@ sume al catálogo una aplicación que todavía no está en la lista:
    reconoce el instalador o si el sugerido no funciona.
 3. Elige en qué columna debe aparecer y, opcionalmente, la versión.
 4. Al presionar "Agregar": si el instalador ya estaba dentro de la carpeta
-   base de instaladores, se guarda esa ruta relativa; si estaba en otro
-   lugar (por ejemplo, en el Escritorio), la app lo copia automáticamente a
-   una subcarpeta nueva dentro de la carpeta base para que quede accesible
-   igual que el resto del catálogo.
+   base de instaladores (`CM APPS\APPS`, ver sección siguiente), se guarda
+   esa ruta relativa; si estaba en otro lugar (por ejemplo, en el
+   Escritorio), la app lo copia automáticamente a una subcarpeta nueva
+   dentro de `CM APPS\APPS` — en la MISMA unidad desde la que se está
+   ejecutando la app en ese momento (el disco local o la USB), para que
+   quede accesible igual que el resto del catálogo sin depender de rutas
+   externas.
 
 La aplicación nueva aparece de inmediato en la lista principal al cerrar
 AJUSTES, sin reiniciar la app ni tocar `apps.json` a mano.
@@ -138,6 +149,26 @@ Cada aplicación se define así:
   instalador (varían por fabricante — hay que verificarlos contra el
   instalador real, los que traje son solo ejemplos razonables).
 
+## Carpeta de instaladores por defecto: `CM APPS\APPS`
+
+Si no hay ninguna carpeta configurada todavía (no existe `config/settings.json`,
+ver sección siguiente), la app calcula sola la carpeta de instaladores como
+`CM APPS\APPS` dentro de la **misma unidad** desde la que se está ejecutando
+el `.exe` en ese momento:
+
+- Corriendo desde el disco local → `C:\CM APPS\APPS`.
+- Corriendo desde una memoria USB → `E:\CM APPS\APPS` (o la letra que le
+  toque a esa USB en ese equipo).
+
+Dentro de `APPS` van las subcarpetas de cada aplicación (`APPS\GoogleChrome\ChromeSetup.exe`,
+`APPS\SAPGUI\NwSapSetup.exe`, etc.), igual que antes con la carpeta
+`Instaladores`. Como la ruta se recalcula sola según la unidad activa, ya no
+hace falta reconfigurar nada manualmente cada vez que la USB recibe una
+letra distinta — simplemente hay que asegurarse de que la carpeta `CM
+APPS\APPS` con los instaladores exista en esa unidad. Si se prefiere usar
+otra carpeta, se puede seguir configurando manualmente desde AJUSTES →
+"Examinar...".
+
 ## `config/settings.json` es local de cada equipo (no se sincroniza por git)
 
 `config/settings.json` guarda la carpeta de instaladores configurada en
@@ -149,8 +180,10 @@ otra persona ni sobreescriba el tuyo.
 - `config/settings.example.json` sí está versionado, como plantilla de
   referencia (no lo usa la app en tiempo de ejecución).
 - Si `config/settings.json` no existe (por ejemplo, en una copia recién
-  clonada), la app arranca con valores por defecto sin fallar; solo hay que
-  configurar la carpeta correcta una vez desde AJUSTES → "Examinar...".
+  clonada, o justo después de que `git pull` lo elimine al dejar de
+  rastrearlo), la app arranca usando el valor calculado de `CM APPS\APPS`
+  (ver arriba) sin fallar — no es obligatorio volver a configurar nada a
+  mano, salvo que se quiera usar una carpeta distinta.
 - Si ya tenías un `config/settings.json` con tu ruta y actualizas a una
   versión del proyecto posterior a este cambio, `git pull` puede eliminarlo
   al dejar de rastrearlo — si eso pasa, simplemente vuelve a configurar la
@@ -159,16 +192,20 @@ otra persona ni sobreescriba el tuyo.
 ## Instalar desde un USB (sin copiar nada al disco local)
 
 `installers_base_path` acepta cualquier ruta absoluta, incluida una unidad
-USB (ej. `E:\Instaladores`). La app ejecuta cada instalador directo desde
+USB (ej. `E:\CM APPS\APPS`). La app ejecuta cada instalador directo desde
 ahí — no copia nada al disco local.
 
-Para usarlo: conecta el USB, abre AJUSTES → "Examinar..." y selecciona la
-carpeta de instaladores dentro del USB. Un indicador confirma si la ruta
-existe en ese momento. Como Windows puede asignarle una letra de unidad
-distinta al USB cada vez que lo conectas (`E:`, `F:`, etc.), puede que haya
-que re-seleccionar la carpeta si cambia de equipo o de puerto — la app
-también avisa con un mensaje claro si al presionar INSTALAR la carpeta
-configurada ya no se encuentra.
+Como ahora la carpeta por defecto (`CM APPS\APPS`) se calcula sola en la
+unidad desde la que corre el `.exe` (ver sección "Carpeta de instaladores
+por defecto" más arriba), en la mayoría de los casos **no hace falta
+configurar nada**: basta con que el USB tenga el `.exe` junto a su propia
+carpeta `CM APPS\APPS` con los instaladores adentro, y la app la encuentra
+sola sin importar qué letra (`E:`, `F:`, etc.) le haya asignado Windows esa
+vez. Si se prefiere usar otra carpeta o nombre, se puede seguir
+configurando manualmente: abre AJUSTES → "Examinar..." y selecciona la
+carpeta deseada. Un indicador confirma si la ruta existe en ese momento, y
+la app también avisa con un mensaje claro si al presionar INSTALAR la
+carpeta configurada ya no se encuentra.
 - `enabled: false`: deja el ítem visible pero deshabilitado (por ejemplo,
   para un ítem que aún no está listo para desplegarse).
 - `version`: la versión del paquete que se instala; aparece tal cual en el

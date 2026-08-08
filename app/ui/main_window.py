@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -339,7 +339,7 @@ class SettingsDialog(QDialog):
         self.catalog_changed = False
 
         self.base_path_edit = QLineEdit(settings.installers_base_path)
-        self.base_path_edit.setPlaceholderText(r"Ej: C:\Instaladores  o  E:\Instaladores (USB)")
+        self.base_path_edit.setPlaceholderText(r"Ej: C:\CM APPS\APPS  o  E:\CM APPS\APPS (USB)")
         self.base_path_edit.textChanged.connect(self._update_path_status)
 
         browse_btn = QPushButton("Examinar...")
@@ -447,6 +447,14 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
+        # Revisa cada pocos segundos si la carpeta de instaladores sigue
+        # existiendo (por ejemplo, si conectan la USB despues de abrir la
+        # app, o si la desconectan) para que el indicador arriba de
+        # INSTALAR siempre este al dia sin tener que reabrir AJUSTES.
+        self._path_check_timer = QTimer(self)
+        self._path_check_timer.timeout.connect(self._update_active_path_label)
+        self._path_check_timer.start(3000)
+
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         central = QWidget()
@@ -516,13 +524,43 @@ class MainWindow(QMainWindow):
         row.addLayout(grid)
         row.addStretch(1)
 
+        installar_col = QVBoxLayout()
+        installar_col.setSpacing(4)
+
+        self.active_path_label = QLabel()
+        self.active_path_label.setObjectName("activePathLabel")
+        self.active_path_label.setAlignment(Qt.AlignRight)
+        self.active_path_label.setWordWrap(True)
+        self.active_path_label.setMaximumWidth(260)
+        installar_col.addWidget(self.active_path_label)
+
         self.installar_btn = QPushButton("INSTALAR")
         self.installar_btn.setObjectName("installarButton")
         self.installar_btn.setMinimumSize(160, 70)
         self.installar_btn.clicked.connect(self._on_installar)
-        row.addWidget(self.installar_btn)
+        installar_col.addWidget(self.installar_btn)
+
+        row.addLayout(installar_col)
+        self._update_active_path_label()
 
         return row
+
+    def _update_active_path_label(self) -> None:
+        """Refleja en pantalla, justo arriba del botón INSTALAR, la carpeta
+        de instaladores que la app está usando en este momento y si existe
+        ahora mismo (en verde) o no (en rojo) — así el técnico sabe de un
+        vistazo si puede darle INSTALAR con confianza, sin tener que
+        intentarlo y enterarse después por el log que la carpeta no
+        estaba."""
+        if not hasattr(self, "active_path_label"):
+            return
+        path = self.settings.installers_base_path
+        if path and Path(path).exists():
+            self.active_path_label.setText(f"Instalando desde:\n{path}\n✓ Carpeta encontrada")
+            self.active_path_label.setStyleSheet("color: #1a7a1a;")
+        else:
+            self.active_path_label.setText(f"Instalando desde:\n{path}\n⚠ Carpeta NO encontrada")
+            self.active_path_label.setStyleSheet("color: #b03a2e; font-weight: 600;")
 
     # ------------------------------------------------------------- acciones
     def _apply_preset(self, preset_ids: set[str]) -> None:
@@ -549,6 +587,7 @@ class MainWindow(QMainWindow):
             self._reload_catalog()
             if not accepted:
                 self.status_label.setText("Catálogo actualizado: se agregó una nueva aplicación.")
+        self._update_active_path_label()
 
     def _reload_catalog(self) -> None:
         """Vuelve a leer `config/apps.json` y reconstruye la lista de

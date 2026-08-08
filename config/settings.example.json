@@ -1,5 +1,6 @@
 {
-  "installers_base_path": "C:\\Instaladores",
+  "_comment": "Plantilla de referencia (no la usa la app en tiempo de ejecucion). config/settings.json real se genera automaticamente por equipo y NO se versiona (ver .gitignore) porque installers_base_path suele ser distinto en cada maquina/USB. Si no existe, la app usa por defecto 'CM APPS\\APPS' en la misma unidad desde la que se esta ejecutando (C:, E:, etc.).",
+  "installers_base_path": "C:\\CM APPS\\APPS",
   "logs_path": "logs",
   "run_mode": "sequential"
 }

@@ -38,6 +38,20 @@ def get_assets_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "assets"
 
 
+def get_default_installers_base_path() -> str:
+    """Carpeta de instaladores por defecto: `CM APPS\\APPS` dentro de la
+    MISMA unidad (letra de disco) desde la que se está ejecutando la app en
+    este momento. Así funciona igual sin tocar nada si el .exe corre desde
+    el disco local (`C:`) o desde una memoria USB (`E:`, `F:`, etc.) — cada
+    copia de la app usa su propia unidad como base, sin depender de que la
+    letra de la USB sea siempre la misma."""
+    root = get_app_root()
+    drive = root.drive  # ej. "C:" en Windows; "" fuera de Windows (dev)
+    if drive:
+        return str(Path(drive + "\\") / "CM APPS" / "APPS")
+    return str(root / "CM APPS" / "APPS")
+
+
 APP_ROOT = get_app_root()
 CONFIG_DIR = APP_ROOT / "config"
 LOGS_DIR = APP_ROOT / "logs"
@@ -74,7 +88,7 @@ class AppColumn:
 
 @dataclass
 class Settings:
-    installers_base_path: str = r"C:\Instaladores"
+    installers_base_path: str = field(default_factory=get_default_installers_base_path)
     logs_path: str = "logs"
     run_mode: str = "sequential"  # sequential | parallel
 
@@ -91,7 +105,7 @@ def load_settings() -> Settings:
         return Settings()
     data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     return Settings(
-        installers_base_path=data.get("installers_base_path", Settings.installers_base_path),
+        installers_base_path=data.get("installers_base_path") or get_default_installers_base_path(),
         logs_path=data.get("logs_path", Settings.logs_path),
         run_mode=data.get("run_mode", Settings.run_mode),
     )

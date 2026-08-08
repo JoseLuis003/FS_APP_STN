@@ -125,6 +125,12 @@ QLabel#statusBar {{
     padding: 4px;
 }}
 
+QLabel#activePathLabel {{
+    color: #555555;
+    font-size: 11px;
+    padding: 2px 4px;
+}}
+
 QProgressBar#installProgressBar {{
     background-color: #e0e0e0;
     border: 1px solid #9a9a9a;

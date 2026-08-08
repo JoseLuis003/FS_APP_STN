@@ -25,6 +25,10 @@ al presionarlos.
   reemplazar ese archivo (se muestra completa, sin recortar, con barras de
   color sólido a los lados si la proporción no coincide exactamente con la
   ventana).
+- La ventana de la portada abre con tamaño fijo (740×580 píxeles) para que
+  nunca se estire a ocupar toda la pantalla, sin importar la resolución del
+  equipo. Para cambiarlo, edita los dos números en
+  `HomeWindow.__init__` (`self.setFixedSize(740, 580)`).
 
 ## Catálogo de instalación (botón APPS)
 

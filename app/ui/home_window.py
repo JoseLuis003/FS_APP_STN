@@ -75,7 +75,12 @@ class HomeWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FS APP PORTABLE")
-        self.resize(760, 640)
+        # Tamaño fijo (no `resize`, que solo sugiere un tamaño inicial pero
+        # deja la ventana libre de estirarse): así se garantiza que la
+        # portada siempre abra compacta, sin importar la resolución de la
+        # pantalla. Si se necesita otro tamaño, basta con cambiar estos dos
+        # números (ancho, alto en píxeles).
+        self.setFixedSize(740, 580)
         self.setStyleSheet(_HOME_STYLESHEET)
 
         # Se crea la primera vez que se presiona APPS, y se reutiliza si se

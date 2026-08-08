@@ -22,11 +22,26 @@ def get_app_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def get_assets_dir() -> Path:
+    """Carpeta de recursos estáticos (íconos, etc.).
+
+    A diferencia de `config/`, estos archivos no los edita el técnico, así
+    que sí se empaquetan dentro del .exe (PyInstaller los extrae en una
+    carpeta temporal referenciada por `sys._MEIPASS`)."""
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass) / "assets"
+        return get_app_root() / "assets"
+    return Path(__file__).resolve().parent.parent / "assets"
+
+
 APP_ROOT = get_app_root()
 CONFIG_DIR = APP_ROOT / "config"
 LOGS_DIR = APP_ROOT / "logs"
 APPS_FILE = CONFIG_DIR / "apps.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
+ASSETS_DIR = get_assets_dir()
 
 
 @dataclass

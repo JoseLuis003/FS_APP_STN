@@ -8,6 +8,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('config', 'config'),  # se copian junto al .exe la primera vez
+        ('assets', 'assets'),  # iconos (checkmark del checkbox, etc.) empaquetados dentro del .exe
     ],
     hiddenimports=[],
     hookspath=[],

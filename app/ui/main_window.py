@@ -1,10 +1,13 @@
 """Ventana principal: catálogo de aplicaciones en 3 columnas + controles."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QFileDialog,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
@@ -17,9 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import AppItem, Settings, load_app_columns, load_settings, save_settings
+from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_settings, save_settings
 from app.installer import InstallManager
-from app.ui.styles import MAIN_STYLESHEET
+from app.ui.styles import build_stylesheet
 
 
 class SettingsDialog(QDialog):
@@ -28,14 +31,32 @@ class SettingsDialog(QDialog):
     def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Ajustes")
+        self.setMinimumWidth(420)
         self.settings = settings
 
         self.base_path_edit = QLineEdit(settings.installers_base_path)
+        self.base_path_edit.setPlaceholderText(r"Ej: C:\Instaladores  o  E:\Instaladores (USB)")
+        self.base_path_edit.textChanged.connect(self._update_path_status)
+
+        browse_btn = QPushButton("Examinar...")
+        browse_btn.clicked.connect(self._on_browse)
+
+        path_row = QHBoxLayout()
+        path_row.setContentsMargins(0, 0, 0, 0)
+        path_row.addWidget(self.base_path_edit)
+        path_row.addWidget(browse_btn)
+        path_row_widget = QWidget()
+        path_row_widget.setLayout(path_row)
+
+        self.path_status_label = QLabel()
+        self.path_status_label.setWordWrap(True)
+
         self.confirm_checkbox = QCheckBox("Confirmar antes de instalar")
         self.confirm_checkbox.setChecked(settings.confirm_before_install)
 
         form = QFormLayout()
-        form.addRow("Carpeta base de instaladores:", self.base_path_edit)
+        form.addRow("Carpeta base de instaladores:", path_row_widget)
+        form.addRow("", self.path_status_label)
         form.addRow("", self.confirm_checkbox)
 
         save_btn = QPushButton("Guardar")
@@ -52,6 +73,35 @@ class SettingsDialog(QDialog):
         layout.addLayout(form)
         layout.addLayout(btn_row)
 
+        self._update_path_status()
+
+    def _on_browse(self) -> None:
+        current = self.base_path_edit.text().strip()
+        start_dir = current if current and Path(current).exists() else str(Path.home())
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Selecciona la carpeta de instaladores (puede estar en un USB)",
+            start_dir,
+        )
+        if folder:
+            # Qt siempre devuelve rutas con '/'; en Windows funcionan igual,
+            # pero las normalizamos al separador nativo para que se vea prolijo.
+            self.base_path_edit.setText(str(Path(folder)))
+
+    def _update_path_status(self) -> None:
+        text = self.base_path_edit.text().strip()
+        if not text:
+            self.path_status_label.setText("")
+            return
+        if Path(text).exists():
+            self.path_status_label.setText("✓ Carpeta encontrada")
+            self.path_status_label.setStyleSheet("color: #1a7a1a;")
+        else:
+            self.path_status_label.setText(
+                "⚠ No se encuentra esa carpeta ahora mismo (verifica que el USB esté conectado)"
+            )
+            self.path_status_label.setStyleSheet("color: #b03a2e;")
+
     def result_settings(self) -> Settings:
         self.settings.installers_base_path = self.base_path_edit.text().strip()
         self.settings.confirm_before_install = self.confirm_checkbox.isChecked()
@@ -62,7 +112,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FS_APP_STN - Instalador desatendido")
-        self.setStyleSheet(MAIN_STYLESHEET)
+        self.setStyleSheet(build_stylesheet(ASSETS_DIR))
         self.resize(900, 650)
 
         self.settings = load_settings()
@@ -173,6 +223,17 @@ class MainWindow(QMainWindow):
         ]
         if not selected:
             QMessageBox.warning(self, "Instalar", "No hay ninguna aplicación seleccionada.")
+            return
+
+        if not Path(self.settings.installers_base_path).exists():
+            QMessageBox.critical(
+                self,
+                "Carpeta de instaladores no encontrada",
+                "No se encuentra la carpeta configurada:\n\n"
+                f"{self.settings.installers_base_path}\n\n"
+                "Si los instaladores están en un USB, conéctalo y verifica la ruta en AJUSTES "
+                "(la letra de unidad puede cambiar cada vez que lo conectas).",
+            )
             return
 
         if self.settings.confirm_before_install:

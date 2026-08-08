@@ -67,6 +67,20 @@ Cada aplicación se define así:
 - `silent_args`: los parámetros de instalación silenciosa reales de cada
   instalador (varían por fabricante — hay que verificarlos contra el
   instalador real, los que traje son solo ejemplos razonables).
+
+## Instalar desde un USB (sin copiar nada al disco local)
+
+`installers_base_path` acepta cualquier ruta absoluta, incluida una unidad
+USB (ej. `E:\Instaladores`). La app ejecuta cada instalador directo desde
+ahí — no copia nada al disco local.
+
+Para usarlo: conecta el USB, abre AJUSTES → "Examinar..." y selecciona la
+carpeta de instaladores dentro del USB. Un indicador confirma si la ruta
+existe en ese momento. Como Windows puede asignarle una letra de unidad
+distinta al USB cada vez que lo conectas (`E:`, `F:`, etc.), puede que haya
+que re-seleccionar la carpeta si cambia de equipo o de puerto — la app
+también avisa con un mensaje claro si al presionar INSTALAR la carpeta
+configurada ya no se encuentra.
 - `enabled: false`: deja el ítem visible pero deshabilitado, igual que
   "Self Audit" en la captura original.
 

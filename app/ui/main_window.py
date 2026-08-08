@@ -24,6 +24,33 @@ from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_set
 from app.installer import InstallManager
 from app.ui.styles import build_stylesheet
 
+# Preset del botón NUEVO: catálogo típico para un equipo nuevo.
+NUEVO_PRESET_IDS = {
+    "bginfo",
+    "dell_command",
+    "dell_optimizer",
+    "dell_ownertag",
+    "adobe_reader",
+    "forcepoint",
+    "google_chrome",
+    "ms_teams_work",
+    "windows_updates",
+    "anyconnect",
+    "background",
+    "ajustes_necesarios",
+    "shortcuts",
+    "manage_engine",
+    "netfx35",
+}
+
+# Preset del botón MTO: catálogo para mantenimiento.
+MTO_PRESET_IDS = {
+    "isoview",
+    "cortana",
+    "toolbox_print",
+    "shortcut_mto",
+}
+
 
 class SettingsDialog(QDialog):
     """Diálogo 'AJUSTES': ruta base de instaladores, modo de ejecución, etc."""
@@ -166,20 +193,17 @@ class MainWindow(QMainWindow):
         nuevo_btn = QPushButton("NUEVO")
         unselect_btn = QPushButton("UNSELECT")
         ajustes_btn = QPushButton("AJUSTES")
-        atras_btn = QPushButton("ATRAS")
         mto_btn = QPushButton("MTO")
 
         nuevo_btn.clicked.connect(self._on_nuevo)
         unselect_btn.clicked.connect(self._on_unselect)
         ajustes_btn.clicked.connect(self._on_ajustes)
-        atras_btn.clicked.connect(self._on_atras)
         mto_btn.clicked.connect(self._on_mto)
 
         grid.addWidget(nuevo_btn, 0, 0)
         grid.addWidget(unselect_btn, 0, 1)
         grid.addWidget(ajustes_btn, 0, 2)
-        grid.addWidget(atras_btn, 1, 0)
-        grid.addWidget(mto_btn, 1, 1)
+        grid.addWidget(mto_btn, 1, 0)
 
         row.addLayout(grid)
         row.addStretch(1)
@@ -193,6 +217,14 @@ class MainWindow(QMainWindow):
         return row
 
     # ------------------------------------------------------------- acciones
+    def _apply_preset(self, preset_ids: set[str]) -> None:
+        """Deja seleccionados unicamente los items de `preset_ids` (el resto
+        queda sin marcar), respetando los que estan deshabilitados."""
+        for item, checkbox in self.checkboxes.values():
+            if not checkbox.isEnabled():
+                continue
+            checkbox.setChecked(item.id in preset_ids)
+
     def _on_unselect(self) -> None:
         for _item, checkbox in self.checkboxes.values():
             checkbox.setChecked(False)
@@ -205,17 +237,12 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Ajustes guardados.")
 
     def _on_nuevo(self) -> None:
-        # TODO: definir junto al equipo de IT qué debe hacer "NUEVO"
-        # (¿nuevo perfil de equipo? ¿limpiar catálogo actual?).
-        QMessageBox.information(self, "NUEVO", "Funcionalidad pendiente de definir.")
-
-    def _on_atras(self) -> None:
-        # TODO: definir navegación de "ATRAS" (pantalla anterior / wizard).
-        QMessageBox.information(self, "ATRAS", "Funcionalidad pendiente de definir.")
+        self._apply_preset(NUEVO_PRESET_IDS)
+        self.status_label.setText("Selección aplicada: catálogo de equipo nuevo.")
 
     def _on_mto(self) -> None:
-        # TODO: definir alcance de "MTO" (¿modo mantenimiento?).
-        QMessageBox.information(self, "MTO", "Funcionalidad pendiente de definir.")
+        self._apply_preset(MTO_PRESET_IDS)
+        self.status_label.setText("Selección aplicada: catálogo de mantenimiento (MTO).")
 
     def _on_installar(self) -> None:
         selected: list[AppItem] = [

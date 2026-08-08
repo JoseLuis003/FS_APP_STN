@@ -33,4 +33,5 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,   # sin consola, como una app de escritorio normal
     icon=None,       # ej: 'assets/icon.ico'
+    uac_admin=True,  # exige privilegios de administrador (UAC) al abrir el .exe
 )

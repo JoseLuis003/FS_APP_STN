@@ -7,7 +7,9 @@ Las rutas se resuelven junto al ejecutable (o al script, si se corre con
 from __future__ import annotations
 
 import json
+import re
 import sys
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -112,6 +114,38 @@ def save_app_versions(updates: dict[str, str]) -> None:
             for it in grp.get("items", []):
                 if it.get("id") in updates:
                     it["version"] = updates[it["id"]]
+    APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def slugify_id(label: str, existing_ids: set[str]) -> str:
+    """Genera un id único (estilo `snake_case`, sin acentos) a partir del
+    nombre visible de una app nueva, evitando choques con ids que ya existen
+    en el catálogo (les agrega un sufijo numérico si hace falta)."""
+    normalized = unicodedata.normalize("NFKD", label)
+    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
+    base = re.sub(r"[^a-z0-9]+", "_", ascii_only.lower()).strip("_")
+    if not base:
+        base = "app"
+    candidate = base
+    suffix = 2
+    while candidate in existing_ids:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def add_app_item(column_index: int, item: dict[str, Any]) -> None:
+    """Agrega un ítem nuevo a `config/apps.json`, dentro del primer grupo de
+    la columna indicada (0, 1 o 2). Si la columna no tiene ningún grupo
+    todavía, crea uno. No toca ningún otro ítem existente."""
+    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+    columns = data.setdefault("columns", [])
+    while len(columns) <= column_index:
+        columns.append({"groups": []})
+    groups = columns[column_index].setdefault("groups", [])
+    if not groups:
+        groups.append({"items": []})
+    groups[0].setdefault("items", []).append(item)
     APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 

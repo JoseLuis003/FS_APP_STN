@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -27,8 +30,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_settings, save_app_versions, save_settings
+from app.config import (
+    ASSETS_DIR,
+    AppItem,
+    Settings,
+    add_app_item,
+    load_app_columns,
+    load_settings,
+    save_app_versions,
+    save_settings,
+    slugify_id,
+)
 from app.installer import InstallManager
+from app.installer_detect import detect_silent_args
 from app.report import generate_report
 from app.ui.styles import build_stylesheet
 
@@ -137,15 +151,192 @@ class CatalogEditorDialog(QDialog):
         self.accept()
 
 
+class AddAppDialog(QDialog):
+    """Diálogo 'Agregar aplicación': permite sumar al catálogo una aplicación
+    que todavía no está en la lista, pidiendo el instalador y sugiriendo (sin
+    garantizarlo) el switch de instalación silenciosa según el tipo de
+    archivo detectado (ver `app/installer_detect.py`)."""
+
+    _EXTENSION_TYPES = {
+        ".exe": "exe",
+        ".msi": "msi",
+        ".ps1": "script",
+        ".bat": "script",
+        ".cmd": "script",
+    }
+
+    def __init__(self, installers_base_path: str, column_count: int, existing_ids: set[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Agregar aplicación")
+        self.setMinimumWidth(480)
+        self.installers_base_path = installers_base_path
+        self.existing_ids = existing_ids
+        self._installer_path = ""
+        self._installer_type = ""
+
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Ej: 7-Zip")
+
+        self.installer_edit = QLineEdit()
+        self.installer_edit.setReadOnly(True)
+        self.installer_edit.setPlaceholderText("Selecciona el archivo instalador (.exe, .msi, .ps1, .bat)...")
+        browse_btn = QPushButton("Examinar...")
+        browse_btn.clicked.connect(self._on_browse_installer)
+        installer_row = QHBoxLayout()
+        installer_row.setContentsMargins(0, 0, 0, 0)
+        installer_row.addWidget(self.installer_edit)
+        installer_row.addWidget(browse_btn)
+        installer_row_widget = QWidget()
+        installer_row_widget.setLayout(installer_row)
+
+        self.type_label = QLabel("(selecciona un instalador)")
+
+        self.args_edit = QLineEdit()
+        self.args_edit.setPlaceholderText("Ej: /S  o  /qn /norestart")
+        detect_btn = QPushButton("Detectar")
+        detect_btn.clicked.connect(self._on_detect)
+        args_row = QHBoxLayout()
+        args_row.setContentsMargins(0, 0, 0, 0)
+        args_row.addWidget(self.args_edit)
+        args_row.addWidget(detect_btn)
+        args_row_widget = QWidget()
+        args_row_widget.setLayout(args_row)
+
+        self.detect_hint_label = QLabel()
+        self.detect_hint_label.setWordWrap(True)
+        self.detect_hint_label.setStyleSheet("color: #444444;")
+
+        self.column_combo = QComboBox()
+        for i in range(column_count):
+            self.column_combo.addItem(f"Columna {i + 1}", i)
+
+        self.version_edit = QLineEdit()
+        self.version_edit.setPlaceholderText("Opcional, ej: 1.2.3")
+
+        form = QFormLayout()
+        form.addRow("Nombre a mostrar:", self.name_edit)
+        form.addRow("Instalador:", installer_row_widget)
+        form.addRow("Tipo detectado:", self.type_label)
+        form.addRow("Argumentos silenciosos:", args_row_widget)
+        form.addRow("", self.detect_hint_label)
+        form.addRow("Columna:", self.column_combo)
+        form.addRow("Versión (opcional):", self.version_edit)
+
+        hint = QLabel(
+            "El switch que sugiere \"Detectar\" es solo un punto de partida — no hay forma de "
+            "garantizarlo sin ejecutar el instalador. Confírmalo tú mismo antes de dejarlo en uso."
+        )
+        hint.setWordWrap(True)
+
+        save_btn = QPushButton("Agregar")
+        cancel_btn = QPushButton("Cancelar")
+        save_btn.clicked.connect(self._on_save)
+        cancel_btn.clicked.connect(self.reject)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        btn_row.addWidget(save_btn)
+        btn_row.addWidget(cancel_btn)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(hint)
+        layout.addLayout(btn_row)
+
+    def _on_browse_installer(self) -> None:
+        start_dir = self.installers_base_path if Path(self.installers_base_path).exists() else str(Path.home())
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Selecciona el instalador",
+            start_dir,
+            "Instaladores (*.exe *.msi *.ps1 *.bat *.cmd)",
+        )
+        if not path:
+            return
+        self._installer_path = path
+        self.installer_edit.setText(path)
+        ext = Path(path).suffix.lower()
+        self._installer_type = self._EXTENSION_TYPES.get(ext, "exe")
+        self.type_label.setText(self._installer_type)
+        self.detect_hint_label.setText("")
+        self.args_edit.clear()
+
+    def _on_detect(self) -> None:
+        if not self._installer_path:
+            QMessageBox.warning(self, "Detectar", "Primero selecciona el archivo instalador.")
+            return
+        args, explanation = detect_silent_args(Path(self._installer_path), self._installer_type)
+        if args:
+            self.args_edit.setText(args)
+        self.detect_hint_label.setText(explanation)
+
+    def _on_save(self) -> None:
+        label = self.name_edit.text().strip()
+        if not label:
+            QMessageBox.warning(self, "Agregar aplicación", "Escribe el nombre a mostrar.")
+            return
+        if not self._installer_path:
+            QMessageBox.warning(self, "Agregar aplicación", "Selecciona el archivo instalador.")
+            return
+
+        base_path = Path(self.installers_base_path)
+        installer_path = Path(self._installer_path)
+        new_id = slugify_id(label, self.existing_ids)
+
+        try:
+            relative_installer = installer_path.resolve().relative_to(base_path.resolve()).as_posix()
+        except ValueError:
+            # El instalador elegido está fuera de la carpeta base: lo copiamos
+            # dentro (en una subcarpeta con el id nuevo) para que quede
+            # accesible con una ruta relativa, igual que el resto del catálogo.
+            try:
+                dest_dir = base_path / new_id
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_path = dest_dir / installer_path.name
+                shutil.copy2(installer_path, dest_path)
+                relative_installer = dest_path.relative_to(base_path).as_posix()
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Error al copiar el instalador",
+                    "No se pudo colocar el instalador dentro de la carpeta de instaladores:\n\n"
+                    f"{exc}",
+                )
+                return
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"No se pudo leer la ruta del instalador:\n\n{exc}")
+            return
+
+        item = {
+            "id": new_id,
+            "label": label,
+            "installer": relative_installer,
+            "silent_args": self.args_edit.text().strip(),
+            "installer_type": self._installer_type or "exe",
+            "default_checked": False,
+            "enabled": True,
+            "version": self.version_edit.text().strip() or "N/D",
+        }
+
+        try:
+            add_app_item(self.column_combo.currentData(), item)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error al guardar", f"No se pudo actualizar apps.json:\n\n{exc}")
+            return
+
+        self.accept()
+
+
 class SettingsDialog(QDialog):
     """Diálogo 'AJUSTES': ruta base de instaladores, modo de ejecución, etc."""
 
-    def __init__(self, settings: Settings, items: list[AppItem], parent=None):
+    def __init__(self, settings: Settings, items: list[AppItem], column_count: int, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Ajustes")
         self.setMinimumWidth(420)
         self.settings = settings
         self.items = items
+        self.column_count = column_count
+        self.catalog_changed = False
 
         self.base_path_edit = QLineEdit(settings.installers_base_path)
         self.base_path_edit.setPlaceholderText(r"Ej: C:\Instaladores  o  E:\Instaladores (USB)")
@@ -167,10 +358,14 @@ class SettingsDialog(QDialog):
         edit_versions_btn = QPushButton("Editar versiones de las aplicaciones...")
         edit_versions_btn.clicked.connect(self._on_edit_versions)
 
+        add_app_btn = QPushButton("Agregar aplicación...")
+        add_app_btn.clicked.connect(self._on_add_app)
+
         form = QFormLayout()
         form.addRow("Carpeta base de instaladores:", path_row_widget)
         form.addRow("", self.path_status_label)
         form.addRow("", edit_versions_btn)
+        form.addRow("", add_app_btn)
 
         save_btn = QPushButton("Guardar")
         cancel_btn = QPushButton("Cancelar")
@@ -191,6 +386,18 @@ class SettingsDialog(QDialog):
     def _on_edit_versions(self) -> None:
         dialog = CatalogEditorDialog(self.items, self)
         dialog.exec()
+
+    def _on_add_app(self) -> None:
+        base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
+        existing_ids = {item.id for item in self.items}
+        dialog = AddAppDialog(base_path, self.column_count, existing_ids, self)
+        if dialog.exec() == QDialog.Accepted:
+            self.catalog_changed = True
+            QMessageBox.information(
+                self,
+                "Aplicación agregada",
+                "La aplicación se agregó al catálogo. La lista se actualizará al cerrar Ajustes.",
+            )
 
     def _on_browse(self) -> None:
         current = self.base_path_edit.text().strip()
@@ -254,9 +461,21 @@ class MainWindow(QMainWindow):
         root.addLayout(columns_row)
         root.addStretch(1)
 
+        status_row = QHBoxLayout()
         self.status_label = QLabel("Listo.")
         self.status_label.setObjectName("statusBar")
-        root.addWidget(self.status_label)
+        status_row.addWidget(self.status_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("installProgressBar")
+        self.progress_bar.setFixedWidth(220)
+        self.progress_bar.setFixedHeight(16)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setVisible(False)  # solo se muestra mientras algo se está instalando
+        status_row.addWidget(self.progress_bar)
+        status_row.addStretch(1)
+
+        root.addLayout(status_row)
 
         root.addLayout(self._build_controls())
 
@@ -320,11 +539,31 @@ class MainWindow(QMainWindow):
 
     def _on_ajustes(self) -> None:
         items = [item for item, _checkbox in self.checkboxes.values()]
-        dialog = SettingsDialog(self.settings, items, self)
-        if dialog.exec() == QDialog.Accepted:
+        dialog = SettingsDialog(self.settings, items, len(self.columns), self)
+        accepted = dialog.exec() == QDialog.Accepted
+        if accepted:
             self.settings = dialog.result_settings()
             save_settings(self.settings)
             self.status_label.setText("Ajustes guardados.")
+        if dialog.catalog_changed:
+            self._reload_catalog()
+            if not accepted:
+                self.status_label.setText("Catálogo actualizado: se agregó una nueva aplicación.")
+
+    def _reload_catalog(self) -> None:
+        """Vuelve a leer `config/apps.json` y reconstruye la lista de
+        checkboxes (usado después de agregar una aplicación nueva desde
+        AJUSTES), preservando la selección actual de los ítems que siguen
+        existiendo."""
+        checked_ids = {
+            item_id for item_id, (_item, checkbox) in self.checkboxes.items() if checkbox.isChecked()
+        }
+        self.checkboxes = {}
+        self.columns = load_app_columns()
+        self._build_ui()
+        for item_id, (_item, checkbox) in self.checkboxes.items():
+            if item_id in checked_ids:
+                checkbox.setChecked(True)
 
     def _on_nuevo(self) -> None:
         self._apply_preset(NUEVO_PRESET_IDS)
@@ -370,6 +609,10 @@ class MainWindow(QMainWindow):
         checkbox.style().unpolish(checkbox)
         checkbox.style().polish(checkbox)
         self.status_label.setText(f"Instalando: {_item.label}...")
+        # Los instaladores silenciosos no reportan % de avance real, así que
+        # se muestra en modo indeterminado ("barra que va y viene").
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
 
     def _on_item_finished(self, item_id: str, success: bool, message: str) -> None:
         item, checkbox = self.checkboxes[item_id]
@@ -389,6 +632,8 @@ class MainWindow(QMainWindow):
 
     def _on_queue_finished(self) -> None:
         self._set_controls_enabled(True)
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setRange(0, 1)
         ok = self._results["ok"]
         error = self._results["error"]
         self.status_label.setText(f"Instalación finalizada: {ok} correctas, {error} con error.")

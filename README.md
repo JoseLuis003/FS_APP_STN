@@ -14,12 +14,15 @@ correctamente (igual que la app original).
 - **MTO**: selecciona el catálogo de mantenimiento (ISOView, Cortana,
   Toolbox Print, ShortCut-MTO — ver `MTO_PRESET_IDS`).
 - **AJUSTES**: configura la carpeta base de instaladores (con selector de
-  carpeta) y da acceso a "Editar versiones de las aplicaciones..." (ver
-  sección abajo).
+  carpeta) y da acceso a "Editar versiones de las aplicaciones..." y
+  "Agregar aplicación..." (ver secciones abajo).
 - El botón **ATRAS** de la app original no se incluyó (no aplicaba a este
   flujo).
 - Al presionar INSTALAR se instala directo, sin diálogo de confirmación
   previo.
+- Mientras se instala algo, junto al texto "Instalando: ..." aparece una
+  barra de progreso (modo indeterminado, ya que los instaladores silenciosos
+  no reportan un % real de avance). Desaparece automáticamente al terminar.
 - Al terminar una instalación se genera automáticamente un **reporte**
   (ver sección abajo) y se abre en el navegador.
 - El nombre y la versión que se ven en cada checkbox y en el reporte salen
@@ -33,6 +36,32 @@ soporte puede buscar la aplicación, escribir la versión nueva y presionar
 Guardar — se actualiza `config/apps.json` automáticamente (solo el campo
 `version`, no toca instalador ni argumentos) y el cambio queda activo de
 inmediato, sin reiniciar la app ni tocar ningún archivo a mano.
+
+## Agregar una aplicación nueva al catálogo (sin editar JSON a mano)
+
+AJUSTES → "Agregar aplicación..." permite que cualquier compañero de soporte
+sume al catálogo una aplicación que todavía no está en la lista:
+
+1. Escribe el nombre a mostrar y selecciona el archivo instalador
+   (`.exe`, `.msi`, `.ps1` o `.bat`) con "Examinar...". El tipo de instalador
+   se detecta solo según la extensión del archivo.
+2. Presiona "Detectar" para que la app sugiera los switches de instalación
+   silenciosa típicos, buscando firmas conocidas dentro del propio archivo
+   (Inno Setup, NSIS, InstallShield, WiX, etc. — para `.msi` siempre sugiere
+   `/qn /norestart`, que es el estándar de Windows Installer). **Esto es solo
+   una sugerencia, no una garantía** — el técnico debe confirmar que el
+   switch realmente instala en silencio antes de dejarlo en uso (probándolo
+   él mismo), y puede escribir manualmente otro switch si "Detectar" no
+   reconoce el instalador o si el sugerido no funciona.
+3. Elige en qué columna debe aparecer y, opcionalmente, la versión.
+4. Al presionar "Agregar": si el instalador ya estaba dentro de la carpeta
+   base de instaladores, se guarda esa ruta relativa; si estaba en otro
+   lugar (por ejemplo, en el Escritorio), la app lo copia automáticamente a
+   una subcarpeta nueva dentro de la carpeta base para que quede accesible
+   igual que el resto del catálogo.
+
+La aplicación nueva aparece de inmediato en la lista principal al cerrar
+AJUSTES, sin reiniciar la app ni tocar `apps.json` a mano.
 
 ## Reporte de instalación
 

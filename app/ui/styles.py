@@ -124,4 +124,15 @@ QLabel#statusBar {{
     color: #444444;
     padding: 4px;
 }}
+
+QProgressBar#installProgressBar {{
+    background-color: #e0e0e0;
+    border: 1px solid #9a9a9a;
+    border-radius: 3px;
+}}
+
+QProgressBar#installProgressBar::chunk {{
+    background-color: #16267a;
+    border-radius: 2px;
+}}
 """

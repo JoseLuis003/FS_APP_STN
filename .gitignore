@@ -6,4 +6,6 @@ build/
 dist/
 *.spec.bak
 logs/*.log
+reports/*.html
+reports/*.csv
 .DS_Store

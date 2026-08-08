@@ -53,6 +53,7 @@ class AppItem:
     installer_type: str = "exe"  # exe | msi | script
     default_checked: bool = False
     enabled: bool = True
+    version: str = "N/D"
 
     def resolved_installer_path(self, installers_base_path: str) -> Path:
         base = Path(installers_base_path)
@@ -117,6 +118,7 @@ def load_app_columns() -> list[AppColumn]:
                     installer_type=it.get("installer_type", "exe"),
                     default_checked=it.get("default_checked", False),
                     enabled=it.get("enabled", True),
+                    version=it.get("version", "N/D"),
                 )
                 for it in grp.get("items", [])
             ]

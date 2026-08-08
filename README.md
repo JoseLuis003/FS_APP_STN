@@ -6,23 +6,76 @@ columnas, permite seleccionar varias, instalarlas de forma silenciosa una
 por una, y va quitando de la lista cada ítem que termina de instalarse
 correctamente (igual que la app original).
 
-## Estado actual (v1 - punto de partida)
+## Estado actual
 
-Como no se contaba con el código fuente original en VB.NET, esta versión se
-reconstruyó a partir de las capturas de pantalla compartidas. Cubre el flujo
-principal (checklist → instalar → progreso → desaparece al completar), pero
-hay 3 botones cuyo comportamiento exacto no se pudo inferir solo de las
-capturas y quedaron como marcador (`TODO` en `app/ui/main_window.py`):
+- **NUEVO**: selecciona el catálogo típico de equipo nuevo (ver
+  `NUEVO_PRESET_IDS` en `app/ui/main_window.py`).
+- **UNSELECT**: deselecciona todo.
+- **MTO**: selecciona el catálogo de mantenimiento (ISOView, Cortana,
+  Toolbox Print, ShortCut-MTO — ver `MTO_PRESET_IDS`).
+- **AJUSTES**: configura la carpeta base de instaladores (con selector de
+  carpeta) y si se pide confirmación antes de instalar.
+- El botón **ATRAS** de la app original no se incluyó (no aplicaba a este
+  flujo).
+- Al terminar una instalación se genera automáticamente un **reporte**
+  (ver sección abajo) y se abre en el navegador.
+- El nombre y la versión que se ven en cada checkbox se **detectan
+  automáticamente del propio instalador** cuando es posible (ver sección
+  abajo), no hace falta escribirlos a mano.
 
-- **NUEVO**
-- **ATRAS**
-- **MTO**
+## Detección automática de nombre/versión
 
-Cuéntame qué deben hacer exactamente y los conecto en la próxima iteración.
+En vez de escribir a mano el nombre "bonito" y la versión de cada app en
+`config/apps.json`, la app intenta leerlos directamente del instalador:
 
-`AJUSTES` sí quedó funcional: abre un diálogo para configurar la carpeta
-base donde están los instaladores y si se pide confirmación antes de
-instalar.
+- **.exe**: lee la información de versión que trae el propio archivo
+  (`ProductName`/`ProductVersion`, o `FileDescription`/`FileVersion` si el
+  instalador no trae las primeras). Es la misma información que se ve en
+  Windows al hacer clic derecho → Propiedades → Detalles sobre un .exe.
+- **.msi**: lee las propiedades `ProductName`/`ProductVersion` de la base
+  de datos del propio MSI.
+- **scripts (.ps1/.bat)**: no tienen esta metadata, así que siguen
+  usando el nombre del catálogo (`label`) tal cual.
+
+Esto se vuelve a leer: al abrir la app, después de guardar AJUSTES (por si
+cambiaste la carpeta de instaladores), y justo antes de instalar. Todos los
+instaladores se consultan en una sola llamada a PowerShell (no una por
+cada uno) para que no se sienta lento al abrir la app.
+
+Si un instalador no se encuentra, o no trae esos datos (pasa seguido con
+bootstrappers genéricos tipo `Setup.exe` sin metadata bien configurada), la
+app cae de vuelta al `label`/`version` que tengas escritos en
+`config/apps.json` — por eso vale la pena dejar esos campos con un valor
+razonable como respaldo, no solo "N/D".
+
+## Reporte de instalación
+
+Al terminar de instalar (o intentar instalar) las aplicaciones seleccionadas,
+la app genera un reporte en `reports/`, en dos formatos:
+
+- `reporte_<equipo>_<fecha>.html`: para verlo o imprimirlo (se abre solo en
+  el navegador al terminar).
+- `reporte_<equipo>_<fecha>.csv`: para importarlo a Excel u otra
+  herramienta de IT.
+
+El encabezado incluye:
+
+- Nombre del equipo
+- Número de serie
+- Asset Tag
+- Versión de Windows (con build number)
+
+Estos 4 datos se obtienen del propio equipo en el momento de generar el
+reporte (número de serie y Asset Tag vía WMI/PowerShell — `Win32_BIOS` y
+`Win32_SystemEnclosure`; versión de Windows vía el registro). Si algo no se
+puede leer (por ejemplo, corriendo fuera de Windows), se muestra "No
+disponible" en vez de fallar.
+
+Debajo va la tabla con una fila por cada aplicación que se instaló
+correctamente: nombre, versión (tomada del campo `version` de
+`config/apps.json` — actualízalo con la versión real de cada paquete) y
+fecha/hora de instalación. Las aplicaciones que fallaron no aparecen en el
+reporte (quedan marcadas en rojo en la pantalla y registradas en `logs/`).
 
 ## Estructura del proyecto
 
@@ -35,13 +88,16 @@ FS_APP_STN/
 ├── app/
 │   ├── config.py             # carga/guarda apps.json y settings.json
 │   ├── installer.py          # motor de instalación (subprocess + QThread)
+│   ├── report.py             # genera el reporte HTML/CSV al terminar
+│   ├── version_detect.py     # lee nombre/version desde cada .exe/.msi
 │   └── ui/
 │       ├── main_window.py    # ventana principal
 │       └── styles.py         # hoja de estilos (QSS)
 ├── config/
 │   ├── apps.json             # catálogo de aplicaciones (editable)
 │   └── settings.json         # ruta de instaladores, modo, etc. (editable)
-└── logs/                     # se crea automáticamente, un log por día
+├── logs/                     # se crea automáticamente, un log por día
+└── reports/                  # se crea automáticamente, un reporte por instalación
 ```
 
 ## Catálogo de aplicaciones (`config/apps.json`)
@@ -81,8 +137,10 @@ distinta al USB cada vez que lo conectas (`E:`, `F:`, etc.), puede que haya
 que re-seleccionar la carpeta si cambia de equipo o de puerto — la app
 también avisa con un mensaje claro si al presionar INSTALAR la carpeta
 configurada ya no se encuentra.
-- `enabled: false`: deja el ítem visible pero deshabilitado, igual que
-  "Self Audit" en la captura original.
+- `enabled: false`: deja el ítem visible pero deshabilitado (por ejemplo,
+  para un ítem que aún no está listo para desplegarse).
+- `version`: la versión del paquete que se instala; aparece tal cual en el
+  reporte final de instalación (ver sección "Reporte de instalación").
 
 **Importante:** los valores de `installer` y `silent_args` que dejé son
 placeholders basados en convenciones típicas de cada fabricante (Dell,

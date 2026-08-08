@@ -1,6 +1,9 @@
 """Ventana principal: catálogo de aplicaciones en 3 columnas + controles."""
 from __future__ import annotations
 
+import os
+import sys
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -22,7 +25,9 @@ from PySide6.QtWidgets import (
 
 from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_settings, save_settings
 from app.installer import InstallManager
+from app.report import generate_report
 from app.ui.styles import build_stylesheet
+from app.version_detect import detect_versions, format_label
 
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
@@ -148,8 +153,12 @@ class MainWindow(QMainWindow):
         # item_id -> (AppItem, QCheckBox)
         self.checkboxes: dict[str, tuple[AppItem, QCheckBox]] = {}
         self.install_manager: InstallManager | None = None
+        # item_id -> (nombre_detectado, version_detectada), solo para los
+        # instaladores donde se pudo leer algo del propio archivo.
+        self._detected: dict[str, tuple[str, str]] = {}
 
         self._build_ui()
+        self._refresh_detected_versions()
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -185,6 +194,36 @@ class MainWindow(QMainWindow):
                 self.checkboxes[item.id] = (item, checkbox)
         col_layout.addStretch(1)
         return col_layout
+
+    # ------------------------------------------------------- version/nombre
+    def _display_name_version(self, item: AppItem) -> tuple[str, str]:
+        """Nombre y version a usar para `item`: lo detectado del propio
+        instalador si se pudo leer, o lo que diga el catálogo si no."""
+        detected = self._detected.get(item.id)
+        name = item.label
+        version = item.version if item.version and item.version != "N/D" else ""
+        if detected:
+            detected_name, detected_version = detected
+            if detected_name:
+                name = detected_name
+            if detected_version:
+                version = detected_version
+        return name, version
+
+    def _refresh_detected_versions(self) -> None:
+        """Vuelve a leer nombre/version de cada instalador (.exe/.msi) desde
+        la carpeta de instaladores configurada, y actualiza el texto de los
+        checkboxes. Si la carpeta no existe o algún instalador no se
+        encuentra, simplemente se mantiene el nombre/version del catálogo
+        para ese ítem (no rompe nada, solo no hay nada nuevo que mostrar)."""
+        entries = [
+            (item.id, item.installer_type, item.resolved_installer_path(self.settings.installers_base_path))
+            for item, _checkbox in self.checkboxes.values()
+        ]
+        self._detected = detect_versions(entries)
+
+        for item, checkbox in self.checkboxes.values():
+            checkbox.setText(format_label(item.label, item.version, self._detected.get(item.id)))
 
     def _build_controls(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -234,6 +273,9 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             self.settings = dialog.result_settings()
             save_settings(self.settings)
+            # la carpeta de instaladores pudo haber cambiado (ej. otro USB):
+            # volvemos a leer nombre/version de cada instalador.
+            self._refresh_detected_versions()
             self.status_label.setText("Ajustes guardados.")
 
     def _on_nuevo(self) -> None:
@@ -263,8 +305,12 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Releer nombre/version justo antes de instalar, por si los
+        # instaladores cambiaron desde que se abrió la app.
+        self._refresh_detected_versions()
+
         if self.settings.confirm_before_install:
-            nombres = "\n".join(f"- {item.label}" for item in selected)
+            nombres = "\n".join(f"- {self.checkboxes[item.id][1].text()}" for item in selected)
             resp = QMessageBox.question(
                 self,
                 "Confirmar instalación",
@@ -275,6 +321,7 @@ class MainWindow(QMainWindow):
 
         self._set_controls_enabled(False)
         self._results = {"ok": 0, "error": 0}
+        self._install_records: list[tuple[str, str, datetime]] = []
 
         self.install_manager = InstallManager(self.settings.installers_base_path, self)
         self.install_manager.item_started.connect(self._on_item_started)
@@ -295,6 +342,8 @@ class MainWindow(QMainWindow):
         checkbox.setProperty("installing", "false")
         if success:
             self._results["ok"] += 1
+            name, version = self._display_name_version(item)
+            self._install_records.append((name, version, datetime.now()))
             # Al llegar al 100%, el ítem desaparece de la lista (igual que la app original).
             checkbox.setVisible(False)
         else:
@@ -310,11 +359,25 @@ class MainWindow(QMainWindow):
         ok = self._results["ok"]
         error = self._results["error"]
         self.status_label.setText(f"Instalación finalizada: {ok} correctas, {error} con error.")
+
+        try:
+            report_html, _report_csv = generate_report(self._install_records)
+            report_msg = f"\n\nReporte generado en:\n{report_html}"
+        except Exception as exc:  # nunca bloquear el flujo de instalación por el reporte
+            report_html = None
+            report_msg = f"\n\nNo se pudo generar el reporte: {exc}"
+
         QMessageBox.information(
             self,
             "Instalación finalizada",
-            f"Completadas: {ok}\nCon error: {error}\n\nRevisa la carpeta 'logs' para el detalle.",
+            f"Completadas: {ok}\nCon error: {error}\n\nRevisa la carpeta 'logs' para el detalle.{report_msg}",
         )
+
+        if report_html and sys.platform == "win32":
+            try:
+                os.startfile(report_html)  # abre el reporte en el navegador por defecto
+            except OSError:
+                pass
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         self.installar_btn.setEnabled(enabled)

@@ -16,6 +16,12 @@ from app.ui.main_window import MainWindow
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("FS_APP_STN")
+    # Forzamos el estilo "Fusion": los estilos nativos de Windows/macOS
+    # ignoran buena parte del QSS de QCheckBox::indicator (la casilla se
+    # dibuja con el tema del sistema y no respeta los colores que le
+    # definimos). Con Fusion, Qt dibuja los controles el mismo en
+    # cualquier plataforma y sí obedece la hoja de estilos.
+    app.setStyle("Fusion")
     window = MainWindow()
     window.show()
     return app.exec()

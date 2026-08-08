@@ -19,6 +19,7 @@ QCheckBox {
     border-radius: 2px;
     background-color: transparent;
     color: #202020;
+    spacing: 8px;
 }
 
 QCheckBox:disabled {
@@ -41,6 +42,33 @@ QCheckBox[failed="true"] {
     background-color: #c0392b;
     color: white;
     font-weight: 600;
+}
+
+/* Casilla (indicador) del checkbox: negra cuando NO esta seleccionada,
+   blanca cuando esta seleccionada (resaltado azul) y tambien blanca
+   cuando el item quedo en error (fondo rojo), para que siempre se
+   distinga sobre cualquier fondo. */
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #202020;
+    border-radius: 2px;
+    background-color: #202020;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #ffffff;
+    border: 1px solid #ffffff;
+}
+
+QCheckBox::indicator:disabled {
+    background-color: #9a9a9a;
+    border: 1px solid #9a9a9a;
+}
+
+QCheckBox[failed="true"]::indicator {
+    background-color: #ffffff;
+    border: 1px solid #ffffff;
 }
 
 QPushButton {

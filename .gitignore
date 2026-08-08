@@ -9,3 +9,10 @@ logs/*.log
 reports/*.html
 reports/*.csv
 .DS_Store
+
+# settings.json es config local de cada equipo/tecnico (ej. la ruta de
+# instaladores puede ser un USB con letra de unidad distinta en cada
+# maquina). Se deja de versionar para que "git pull" nunca vuelva a
+# chocar con cambios locales aqui. config/settings.example.json queda
+# como plantilla de referencia versionada.
+config/settings.json

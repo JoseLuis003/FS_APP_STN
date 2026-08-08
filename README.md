@@ -138,6 +138,24 @@ Cada aplicación se define así:
   instalador (varían por fabricante — hay que verificarlos contra el
   instalador real, los que traje son solo ejemplos razonables).
 
+## `config/settings.json` es local de cada equipo (no se sincroniza por git)
+
+`config/settings.json` guarda la carpeta de instaladores configurada en
+AJUSTES, que normalmente es distinta en cada equipo (ej. una letra de USB
+distinta en cada máquina). Por eso **no está versionado** — está en
+`.gitignore` — para que un `git pull` nunca choque con el ajuste local de
+otra persona ni sobreescriba el tuyo.
+
+- `config/settings.example.json` sí está versionado, como plantilla de
+  referencia (no lo usa la app en tiempo de ejecución).
+- Si `config/settings.json` no existe (por ejemplo, en una copia recién
+  clonada), la app arranca con valores por defecto sin fallar; solo hay que
+  configurar la carpeta correcta una vez desde AJUSTES → "Examinar...".
+- Si ya tenías un `config/settings.json` con tu ruta y actualizas a una
+  versión del proyecto posterior a este cambio, `git pull` puede eliminarlo
+  al dejar de rastrearlo — si eso pasa, simplemente vuelve a configurar la
+  carpeta desde AJUSTES (una sola vez).
+
 ## Instalar desde un USB (sin copiar nada al disco local)
 
 `installers_base_path` acepta cualquier ruta absoluta, incluida una unidad

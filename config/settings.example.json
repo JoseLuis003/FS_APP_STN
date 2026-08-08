@@ -1,0 +1,5 @@
+{
+  "installers_base_path": "C:\\Instaladores",
+  "logs_path": "logs",
+  "run_mode": "sequential"
+}

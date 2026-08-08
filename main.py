@@ -10,7 +10,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from app.ui.main_window import MainWindow
+from app.ui.home_window import HomeWindow
 
 
 def main() -> int:
@@ -22,7 +22,9 @@ def main() -> int:
     # definimos). Con Fusion, Qt dibuja los controles el mismo en
     # cualquier plataforma y sí obedece la hoja de estilos.
     app.setStyle("Fusion")
-    window = MainWindow()
+    # La app ahora arranca en la portada (FS APP PORTABLE), que a su vez
+    # abre la pantalla de instalación (MainWindow) al presionar APPS.
+    window = HomeWindow()
     window.show()
     return app.exec()
 

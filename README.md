@@ -1,12 +1,32 @@
-# FS_APP_STN — Instalador desatendido (versión Python)
+# FS_APP_STN — FS APP PORTABLE (versión Python)
 
 Reemplazo en Python del instalador desatendido que originalmente estaba en
-VB.NET. Muestra un catálogo de aplicaciones en checkboxes agrupados por
-columnas, permite seleccionar varias, instalarlas de forma silenciosa una
-por una, y va quitando de la lista cada ítem que termina de instalarse
-correctamente (igual que la app original).
+VB.NET. La app abre en una **portada** ("FS APP PORTABLE") con 3 botones —
+APPS, LTP / CSS y DOMINIO — y por ahora solo APPS lleva a una pantalla real:
+el catálogo de aplicaciones en checkboxes agrupados por columnas, que
+permite seleccionar varias, instalarlas de forma silenciosa una por una, y
+va quitando de la lista cada ítem que termina de instalarse correctamente
+(igual que la app original). Los otros dos botones (LTP / CSS y DOMINIO)
+todavía no tienen una sección definida — muestran un aviso de "próximamente"
+al presionarlos.
 
-## Estado actual
+## Portada (`app/ui/home_window.py`)
+
+- Barra superior con los 3 botones de navegación (APPS, LTP / CSS,
+  DOMINIO), y debajo la imagen de campaña completa, sin recortar.
+- **APPS**: abre el catálogo de instalación (ver sección siguiente). La
+  ventana de instalación se crea una sola vez y se reutiliza si se vuelve a
+  entrar.
+- **LTP / CSS** y **DOMINIO**: muestran un mensaje de "próximamente" — para
+  activarlos hay que definir primero qué pantalla o función debe abrir cada
+  uno.
+- La imagen de fondo (`assets/home_background.png`) es material de
+  campaña interna de Copa Airlines; si se necesita cambiarla, basta con
+  reemplazar ese archivo (se muestra completa, sin recortar, con barras de
+  color sólido a los lados si la proporción no coincide exactamente con la
+  ventana).
+
+## Catálogo de instalación (botón APPS)
 
 - **NUEVO**: selecciona el catálogo típico de equipo nuevo (ver
   `NUEVO_PRESET_IDS` en `app/ui/main_window.py`).
@@ -114,13 +134,19 @@ FS_APP_STN/
 ├── app/
 │   ├── config.py             # carga/guarda apps.json y settings.json
 │   ├── installer.py          # motor de instalación (subprocess + QThread)
+│   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   └── ui/
-│       ├── main_window.py    # ventana principal
+│       ├── home_window.py    # portada (FS APP PORTABLE): APPS / LTP-CSS / DOMINIO
+│       ├── main_window.py    # catálogo de instalación (botón APPS)
 │       └── styles.py         # hoja de estilos (QSS)
+├── assets/
+│   ├── check.png              # ícono del checkmark de los checkboxes
+│   └── home_background.png    # imagen de campaña de la portada
 ├── config/
-│   ├── apps.json             # catálogo de aplicaciones (editable)
-│   └── settings.json         # ruta de instaladores, modo, etc. (editable)
+│   ├── apps.json               # catálogo de aplicaciones (editable)
+│   ├── settings.json            # ruta de instaladores, modo, etc. (local, no versionado)
+│   └── settings.example.json    # plantilla de referencia (sí versionada)
 ├── logs/                     # se crea automáticamente, un log por día
 └── reports/                  # se crea automáticamente, un reporte por instalación
 ```

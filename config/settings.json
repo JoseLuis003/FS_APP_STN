@@ -1,6 +1,5 @@
 {
   "installers_base_path": "C:\\Instaladores",
   "logs_path": "logs",
-  "run_mode": "sequential",
-  "confirm_before_install": true
+  "run_mode": "sequential"
 }

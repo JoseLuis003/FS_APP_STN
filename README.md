@@ -14,39 +14,16 @@ correctamente (igual que la app original).
 - **MTO**: selecciona el catálogo de mantenimiento (ISOView, Cortana,
   Toolbox Print, ShortCut-MTO — ver `MTO_PRESET_IDS`).
 - **AJUSTES**: configura la carpeta base de instaladores (con selector de
-  carpeta) y si se pide confirmación antes de instalar.
+  carpeta).
 - El botón **ATRAS** de la app original no se incluyó (no aplicaba a este
   flujo).
+- Al presionar INSTALAR se instala directo, sin diálogo de confirmación
+  previo.
 - Al terminar una instalación se genera automáticamente un **reporte**
   (ver sección abajo) y se abre en el navegador.
-- El nombre y la versión que se ven en cada checkbox se **detectan
-  automáticamente del propio instalador** cuando es posible (ver sección
-  abajo), no hace falta escribirlos a mano.
-
-## Detección automática de nombre/versión
-
-En vez de escribir a mano el nombre "bonito" y la versión de cada app en
-`config/apps.json`, la app intenta leerlos directamente del instalador:
-
-- **.exe**: lee la información de versión que trae el propio archivo
-  (`ProductName`/`ProductVersion`, o `FileDescription`/`FileVersion` si el
-  instalador no trae las primeras). Es la misma información que se ve en
-  Windows al hacer clic derecho → Propiedades → Detalles sobre un .exe.
-- **.msi**: lee las propiedades `ProductName`/`ProductVersion` de la base
-  de datos del propio MSI.
-- **scripts (.ps1/.bat)**: no tienen esta metadata, así que siguen
-  usando el nombre del catálogo (`label`) tal cual.
-
-Esto se vuelve a leer: al abrir la app, después de guardar AJUSTES (por si
-cambiaste la carpeta de instaladores), y justo antes de instalar. Todos los
-instaladores se consultan en una sola llamada a PowerShell (no una por
-cada uno) para que no se sienta lento al abrir la app.
-
-Si un instalador no se encuentra, o no trae esos datos (pasa seguido con
-bootstrappers genéricos tipo `Setup.exe` sin metadata bien configurada), la
-app cae de vuelta al `label`/`version` que tengas escritos en
-`config/apps.json` — por eso vale la pena dejar esos campos con un valor
-razonable como respaldo, no solo "N/D".
+- El nombre y la versión que se ven en cada checkbox y en el reporte salen
+  del campo `label`/`version` de `config/apps.json` — se escriben a mano
+  ahí, no se detectan automáticamente del instalador.
 
 ## Reporte de instalación
 
@@ -89,7 +66,6 @@ FS_APP_STN/
 │   ├── config.py             # carga/guarda apps.json y settings.json
 │   ├── installer.py          # motor de instalación (subprocess + QThread)
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
-│   ├── version_detect.py     # lee nombre/version desde cada .exe/.msi
 │   └── ui/
 │       ├── main_window.py    # ventana principal
 │       └── styles.py         # hoja de estilos (QSS)

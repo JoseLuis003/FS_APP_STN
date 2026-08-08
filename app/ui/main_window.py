@@ -27,7 +27,6 @@ from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_set
 from app.installer import InstallManager
 from app.report import generate_report
 from app.ui.styles import build_stylesheet
-from app.version_detect import detect_versions, format_label
 
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
@@ -83,13 +82,9 @@ class SettingsDialog(QDialog):
         self.path_status_label = QLabel()
         self.path_status_label.setWordWrap(True)
 
-        self.confirm_checkbox = QCheckBox("Confirmar antes de instalar")
-        self.confirm_checkbox.setChecked(settings.confirm_before_install)
-
         form = QFormLayout()
         form.addRow("Carpeta base de instaladores:", path_row_widget)
         form.addRow("", self.path_status_label)
-        form.addRow("", self.confirm_checkbox)
 
         save_btn = QPushButton("Guardar")
         cancel_btn = QPushButton("Cancelar")
@@ -136,7 +131,6 @@ class SettingsDialog(QDialog):
 
     def result_settings(self) -> Settings:
         self.settings.installers_base_path = self.base_path_edit.text().strip()
-        self.settings.confirm_before_install = self.confirm_checkbox.isChecked()
         return self.settings
 
 
@@ -153,12 +147,8 @@ class MainWindow(QMainWindow):
         # item_id -> (AppItem, QCheckBox)
         self.checkboxes: dict[str, tuple[AppItem, QCheckBox]] = {}
         self.install_manager: InstallManager | None = None
-        # item_id -> (nombre_detectado, version_detectada), solo para los
-        # instaladores donde se pudo leer algo del propio archivo.
-        self._detected: dict[str, tuple[str, str]] = {}
 
         self._build_ui()
-        self._refresh_detected_versions()
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -194,36 +184,6 @@ class MainWindow(QMainWindow):
                 self.checkboxes[item.id] = (item, checkbox)
         col_layout.addStretch(1)
         return col_layout
-
-    # ------------------------------------------------------- version/nombre
-    def _display_name_version(self, item: AppItem) -> tuple[str, str]:
-        """Nombre y version a usar para `item`: lo detectado del propio
-        instalador si se pudo leer, o lo que diga el catálogo si no."""
-        detected = self._detected.get(item.id)
-        name = item.label
-        version = item.version if item.version and item.version != "N/D" else ""
-        if detected:
-            detected_name, detected_version = detected
-            if detected_name:
-                name = detected_name
-            if detected_version:
-                version = detected_version
-        return name, version
-
-    def _refresh_detected_versions(self) -> None:
-        """Vuelve a leer nombre/version de cada instalador (.exe/.msi) desde
-        la carpeta de instaladores configurada, y actualiza el texto de los
-        checkboxes. Si la carpeta no existe o algún instalador no se
-        encuentra, simplemente se mantiene el nombre/version del catálogo
-        para ese ítem (no rompe nada, solo no hay nada nuevo que mostrar)."""
-        entries = [
-            (item.id, item.installer_type, item.resolved_installer_path(self.settings.installers_base_path))
-            for item, _checkbox in self.checkboxes.values()
-        ]
-        self._detected = detect_versions(entries)
-
-        for item, checkbox in self.checkboxes.values():
-            checkbox.setText(format_label(item.label, item.version, self._detected.get(item.id)))
 
     def _build_controls(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -273,9 +233,6 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             self.settings = dialog.result_settings()
             save_settings(self.settings)
-            # la carpeta de instaladores pudo haber cambiado (ej. otro USB):
-            # volvemos a leer nombre/version de cada instalador.
-            self._refresh_detected_versions()
             self.status_label.setText("Ajustes guardados.")
 
     def _on_nuevo(self) -> None:
@@ -305,20 +262,6 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Releer nombre/version justo antes de instalar, por si los
-        # instaladores cambiaron desde que se abrió la app.
-        self._refresh_detected_versions()
-
-        if self.settings.confirm_before_install:
-            nombres = "\n".join(f"- {self.checkboxes[item.id][1].text()}" for item in selected)
-            resp = QMessageBox.question(
-                self,
-                "Confirmar instalación",
-                f"Se instalarán {len(selected)} aplicación(es):\n\n{nombres}\n\n¿Continuar?",
-            )
-            if resp != QMessageBox.Yes:
-                return
-
         self._set_controls_enabled(False)
         self._results = {"ok": 0, "error": 0}
         self._install_records: list[tuple[str, str, datetime]] = []
@@ -342,8 +285,7 @@ class MainWindow(QMainWindow):
         checkbox.setProperty("installing", "false")
         if success:
             self._results["ok"] += 1
-            name, version = self._display_name_version(item)
-            self._install_records.append((name, version, datetime.now()))
+            self._install_records.append((item.label, item.version, datetime.now()))
             # Al llegar al 100%, el ítem desaparece de la lista (igual que la app original).
             checkbox.setVisible(False)
         else:

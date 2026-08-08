@@ -75,14 +75,12 @@ class Settings:
     installers_base_path: str = r"C:\Instaladores"
     logs_path: str = "logs"
     run_mode: str = "sequential"  # sequential | parallel
-    confirm_before_install: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "installers_base_path": self.installers_base_path,
             "logs_path": self.logs_path,
             "run_mode": self.run_mode,
-            "confirm_before_install": self.confirm_before_install,
         }
 
 
@@ -94,7 +92,6 @@ def load_settings() -> Settings:
         installers_base_path=data.get("installers_base_path", Settings.installers_base_path),
         logs_path=data.get("logs_path", Settings.logs_path),
         run_mode=data.get("run_mode", Settings.run_mode),
-        confirm_before_install=data.get("confirm_before_install", Settings.confirm_before_install),
     )
 
 

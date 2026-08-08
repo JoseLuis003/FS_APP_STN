@@ -100,6 +100,21 @@ def save_settings(settings: Settings) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def save_app_versions(updates: dict[str, str]) -> None:
+    """Actualiza únicamente el campo `version` de los ítems indicados en
+    `updates` ({item_id: nueva_version}) dentro de `config/apps.json`,
+    dejando todo lo demás (instalador, argumentos, grupos, etc.) intacto."""
+    if not updates:
+        return
+    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+    for col in data.get("columns", []):
+        for grp in col.get("groups", []):
+            for it in grp.get("items", []):
+                if it.get("id") in updates:
+                    it["version"] = updates[it["id"]]
+    APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 def load_app_columns() -> list[AppColumn]:
     data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
     columns: list[AppColumn] = []

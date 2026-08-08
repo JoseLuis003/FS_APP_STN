@@ -14,7 +14,8 @@ correctamente (igual que la app original).
 - **MTO**: selecciona el catálogo de mantenimiento (ISOView, Cortana,
   Toolbox Print, ShortCut-MTO — ver `MTO_PRESET_IDS`).
 - **AJUSTES**: configura la carpeta base de instaladores (con selector de
-  carpeta).
+  carpeta) y da acceso a "Editar versiones de las aplicaciones..." (ver
+  sección abajo).
 - El botón **ATRAS** de la app original no se incluyó (no aplicaba a este
   flujo).
 - Al presionar INSTALAR se instala directo, sin diálogo de confirmación
@@ -22,8 +23,16 @@ correctamente (igual que la app original).
 - Al terminar una instalación se genera automáticamente un **reporte**
   (ver sección abajo) y se abre en el navegador.
 - El nombre y la versión que se ven en cada checkbox y en el reporte salen
-  del campo `label`/`version` de `config/apps.json` — se escriben a mano
-  ahí, no se detectan automáticamente del instalador.
+  del campo `label`/`version` de `config/apps.json`.
+
+## Actualizar la versión de una aplicación (sin editar JSON a mano)
+
+AJUSTES → "Editar versiones de las aplicaciones..." abre una tabla con
+todas las apps del catálogo y su versión actual. Cualquier compañero de
+soporte puede buscar la aplicación, escribir la versión nueva y presionar
+Guardar — se actualiza `config/apps.json` automáticamente (solo el campo
+`version`, no toca instalador ni argumentos) y el cambio queda activo de
+inmediato, sin reiniciar la app ni tocar ningún archivo a mano.
 
 ## Reporte de instalación
 

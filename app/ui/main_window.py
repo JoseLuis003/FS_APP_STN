@@ -8,22 +8,26 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QDialog,
     QFileDialog,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_settings, save_settings
+from app.config import ASSETS_DIR, AppItem, Settings, load_app_columns, load_settings, save_app_versions, save_settings
 from app.installer import InstallManager
 from app.report import generate_report
 from app.ui.styles import build_stylesheet
@@ -56,14 +60,92 @@ MTO_PRESET_IDS = {
 }
 
 
+class CatalogEditorDialog(QDialog):
+    """Diálogo 'Editar versiones': una tabla simple donde un compañero de
+    soporte puede actualizar la versión de cada aplicación sin tocar el
+    archivo apps.json a mano. Guarda directo al archivo y también deja
+    actualizados los AppItem que ya está usando la ventana principal."""
+
+    def __init__(self, items: list[AppItem], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Editar versiones de las aplicaciones")
+        self.setMinimumSize(560, 480)
+        self.items = items
+
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Buscar aplicación...")
+        self.search_edit.textChanged.connect(self._filter_rows)
+
+        self.table = QTableWidget(len(items), 2)
+        self.table.setHorizontalHeaderLabels(["Aplicación", "Versión"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+
+        for row, item in enumerate(items):
+            name_cell = QTableWidgetItem(item.label)
+            name_cell.setFlags(name_cell.flags() & ~Qt.ItemIsEditable)
+            version_text = item.version if item.version and item.version != "N/D" else ""
+            version_cell = QTableWidgetItem(version_text)
+            self.table.setItem(row, 0, name_cell)
+            self.table.setItem(row, 1, version_cell)
+
+        hint = QLabel(
+            "Escribe la versión de cada aplicación en la columna derecha y presiona "
+            "Guardar. Deja el campo vacío si no aplica (se guarda como \"N/D\")."
+        )
+        hint.setWordWrap(True)
+
+        save_btn = QPushButton("Guardar")
+        cancel_btn = QPushButton("Cancelar")
+        save_btn.clicked.connect(self._on_save)
+        cancel_btn.clicked.connect(self.reject)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        btn_row.addWidget(save_btn)
+        btn_row.addWidget(cancel_btn)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(hint)
+        layout.addWidget(self.search_edit)
+        layout.addWidget(self.table)
+        layout.addLayout(btn_row)
+
+    def _filter_rows(self, text: str) -> None:
+        text = text.strip().lower()
+        for row in range(self.table.rowCount()):
+            name = self.table.item(row, 0).text().lower()
+            self.table.setRowHidden(row, text not in name)
+
+    def _on_save(self) -> None:
+        updates: dict[str, str] = {}
+        for row, item in enumerate(self.items):
+            new_version = self.table.item(row, 1).text().strip() or "N/D"
+            if new_version != item.version:
+                updates[item.id] = new_version
+                item.version = new_version  # actualiza el objeto en vivo que usa la ventana principal
+
+        if updates:
+            try:
+                save_app_versions(updates)
+            except Exception as exc:
+                QMessageBox.critical(self, "Error al guardar", f"No se pudo guardar apps.json:\n\n{exc}")
+                return
+
+        self.accept()
+
+
 class SettingsDialog(QDialog):
     """Diálogo 'AJUSTES': ruta base de instaladores, modo de ejecución, etc."""
 
-    def __init__(self, settings: Settings, parent=None):
+    def __init__(self, settings: Settings, items: list[AppItem], parent=None):
         super().__init__(parent)
         self.setWindowTitle("Ajustes")
         self.setMinimumWidth(420)
         self.settings = settings
+        self.items = items
 
         self.base_path_edit = QLineEdit(settings.installers_base_path)
         self.base_path_edit.setPlaceholderText(r"Ej: C:\Instaladores  o  E:\Instaladores (USB)")
@@ -82,9 +164,13 @@ class SettingsDialog(QDialog):
         self.path_status_label = QLabel()
         self.path_status_label.setWordWrap(True)
 
+        edit_versions_btn = QPushButton("Editar versiones de las aplicaciones...")
+        edit_versions_btn.clicked.connect(self._on_edit_versions)
+
         form = QFormLayout()
         form.addRow("Carpeta base de instaladores:", path_row_widget)
         form.addRow("", self.path_status_label)
+        form.addRow("", edit_versions_btn)
 
         save_btn = QPushButton("Guardar")
         cancel_btn = QPushButton("Cancelar")
@@ -101,6 +187,10 @@ class SettingsDialog(QDialog):
         layout.addLayout(btn_row)
 
         self._update_path_status()
+
+    def _on_edit_versions(self) -> None:
+        dialog = CatalogEditorDialog(self.items, self)
+        dialog.exec()
 
     def _on_browse(self) -> None:
         current = self.base_path_edit.text().strip()
@@ -229,7 +319,8 @@ class MainWindow(QMainWindow):
             checkbox.setChecked(False)
 
     def _on_ajustes(self) -> None:
-        dialog = SettingsDialog(self.settings, self)
+        items = [item for item, _checkbox in self.checkboxes.values()]
+        dialog = SettingsDialog(self.settings, items, self)
         if dialog.exec() == QDialog.Accepted:
             self.settings = dialog.result_settings()
             save_settings(self.settings)

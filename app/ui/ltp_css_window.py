@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -38,6 +39,28 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# Tamaño de ventana "ideal" (suficiente para ver el catálogo completo sin
+# scroll en un monitor normal). Si la pantalla del técnico es más chica —
+# por ejemplo un laptop con poca resolución o con la barra de tareas
+# ocupando espacio — se recorta para que la ventana siempre entre
+# completa; el contenido que no quepa se ve haciendo scroll (ver
+# QScrollArea en `_build_ui`), en vez de que la ventana se abra más alta
+# que la pantalla y ATRAS/INSTALAR queden inalcanzables detrás de la barra
+# de tareas.
+_DEFAULT_WIDTH = 950
+_DEFAULT_HEIGHT = 780
+_SCREEN_MARGIN = 40
+
+
+def _initial_window_size() -> tuple[int, int]:
+    width, height = _DEFAULT_WIDTH, _DEFAULT_HEIGHT
+    screen = QGuiApplication.primaryScreen()
+    if screen is not None:
+        available = screen.availableGeometry()
+        width = min(width, max(available.width() - _SCREEN_MARGIN, 300))
+        height = min(height, max(available.height() - _SCREEN_MARGIN, 300))
+    return width, height
+
 from app.config import ASSETS_DIR, AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
 from app.installer import InstallManager
 from app.shares_config_apply import SharesConfigError, apply_shares_configuration, apply_udf_configuration
@@ -51,10 +74,11 @@ class LtpCssWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("FS APP PORTABLE - LTP / CSS")
         self.setStyleSheet(build_stylesheet(ASSETS_DIR))
-        # Un poco más alta que la de APPS: cuando se marca "Shares
-        # Configuracion" aparece el panel SETTING's / DEVICES / CRT's debajo
-        # del catálogo, y así entra completo sin tener que redimensionar.
-        self.resize(950, 780)
+        # Se recorta al tamaño disponible de la pantalla si hace falta (ver
+        # `_initial_window_size`) — el contenido que no quepa se ve
+        # haciendo scroll, así que la ventana nunca se abre más alta que la
+        # pantalla del técnico.
+        self.resize(*_initial_window_size())
 
         # Si se abrió desde la portada, este callback regresa a esa
         # pantalla; si no se indica, ATRAS simplemente cierra esta ventana.

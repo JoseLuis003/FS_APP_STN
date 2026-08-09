@@ -135,6 +135,16 @@ rompía el resaltado azul de los checkboxes marcados que viven adentro. Si
 en algún momento aparece un fondo negro/oscuro detrás del catálogo (por
 ejemplo con Windows en modo oscuro), es esta regla la que hay que revisar.
 
+El tamaño inicial de la ventana (`_initial_window_size()`) se recorta al
+espacio disponible de la pantalla del técnico (`QScreen.availableGeometry()`,
+que ya descuenta la barra de tareas) en vez de usar siempre un tamaño fijo
+de 950×780: en monitores grandes abre a ese tamaño "ideal", pero en
+pantallas más chicas (o con escalado de Windows alto, donde 950×780
+lógicos pueden verse bastante más grandes en píxeles físicos) se ajusta
+para que la ventana entre completa y ATRAS/INSTALAR no queden inalcanzables
+detrás de la barra de tareas. El contenido que no quepa en esa altura se
+ve haciendo scroll (ver el punto anterior).
+
 **Grupos exclusivos (selección única, tipo radio button):** algunos ítems
 del catálogo pueden marcarse como mutuamente excluyentes agregándoles el
 campo `"exclusive_group"` con el mismo valor de texto — por ejemplo,

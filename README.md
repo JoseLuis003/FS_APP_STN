@@ -331,9 +331,13 @@ depender de un único código de salida de todo un `.bat`.
 **Nota:** los ítems del catálogo LTP / CSS (EPSON UTILITY, GEMALTO, 3M,
 DESKO, EPSON USB DRIVER, VIRTUAL PORT, BGR IER, CUSTOM, Shares 5.0 y
 AppShell 4.00.0030) ya tienen instaladores/switches/versiones reales en
-`ltp_css_apps.json`. Solo **Shares Configuracion** y **AppShell
-Configuracion** siguen con rutas de ejemplo (placeholders) — hay que
-revisarlas antes de usarlas en producción.
+`ltp_css_apps.json`. **Shares Configuracion** no necesita ninguno: es un
+caso especial (ver más arriba) cuyo único trabajo es desplegar el panel de
+opciones LNIATA — su campo `installer` queda vacío a propósito, porque
+`LtpCssWindow._on_installar()` lo saca de la cola de instalación normal
+antes de llegar a usarlo. Solo **AppShell Configuracion** sigue con una
+ruta de ejemplo (placeholder) — hay que revisarla antes de usarla en
+producción.
 
 ## Reporte de instalación
 

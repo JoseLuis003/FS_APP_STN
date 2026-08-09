@@ -122,9 +122,13 @@ solo tiene los botones ATRAS e INSTALAR (sin NUEVO/UNSELECT/MTO/AJUSTES —
 se pueden agregar más adelante si hace falta). Reutiliza el mismo motor de
 instalación y la misma carpeta base (`installers_base_path`, ver "Carpeta
 de instaladores por defecto" más abajo) que APPS, así que los instaladores
-de LTP / CSS también van dentro de `CM APPS\APPS`. El reporte que genera al
-terminar se guarda por separado (`reporte_LTP_CSS_...`) para no mezclarse
-con los de APPS.
+de LTP / CSS también van dentro de `CM APPS\APPS`. A diferencia de APPS,
+esta pantalla no genera reporte HTML/CSV al terminar — no hace falta aquí.
+
+El catálogo y el panel de "Shares Configuracion" van dentro de un área con
+scroll: ATRAS e INSTALAR quedan siempre fijos y completos abajo, sin
+importar cuánto contenido haya arriba ni qué tan chica sea la pantalla del
+técnico.
 
 **Grupos exclusivos (selección única, tipo radio button):** algunos ítems
 del catálogo pueden marcarse como mutuamente excluyentes agregándoles el
@@ -147,7 +151,8 @@ vuelve a desmarcar. Dentro de SETTING's:
 - **HOSTNAME** y **CIUDAD** vienen marcados y con un valor precargado
   (HOSTNAME toma el nombre real del equipo con `socket.gethostname()`;
   CIUDAD toma las primeras 3 letras de ese mismo nombre, en mayúsculas),
-  pero el técnico puede editar ese valor libremente.
+  pero el técnico puede editar ese valor libremente. CIUDAD no permite
+  escribir más de 3 caracteres (es un código de ciudad, ej. "PTY").
 - Los 4 campos **LNIATA** (CRT, ATB, BTP, DCP) empiezan desmarcados y
   vacíos, y aceptan letras y números (alfanumérico) hasta un máximo de 6
   caracteres, para evitar errores de tecleo.
@@ -155,6 +160,13 @@ vuelve a desmarcar. Dentro de SETTING's:
 - En todos los campos con casilla, el campo de texto solo se puede editar
   mientras su casilla esté marcada (se deshabilita al desmarcarla, pero
   conserva lo escrito).
+
+Al presionar INSTALAR y aplicarse la configuración con éxito, la casilla
+"Shares Configuracion" se oculta (igual que cualquier ítem completado) y
+el panel se cierra junto con ella. Los 4 campos LNIATA se limpian (casilla
+y texto) para la próxima vez, porque son valores de un solo uso; HOSTNAME
+y CIUDAD SÍ quedan tal cual, porque identifican al equipo y no cambian
+entre corridas.
 
 Las secciones DEVICES (BGR, OCR — WGE deshabilitado por ahora) y CRT's (2,
 4) por ahora son casillas simples, sin ninguna regla especial todavía.

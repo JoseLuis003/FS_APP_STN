@@ -1,9 +1,10 @@
 """Pantalla LTP / CSS: segundo catálogo de instalación, separado del de
 APPS (ver `app/ui/main_window.py`), con su propio archivo de catálogo
 (`config/ltp_css_apps.json`). Reutiliza el mismo motor de instalación
-(`InstallManager`) y el mismo generador de reporte que APPS, pero con una
-lista de aplicaciones distinta y sin los botones NUEVO/UNSELECT/MTO/AJUSTES
-(por ahora esta pantalla solo necesita ATRAS e INSTALAR).
+(`InstallManager`) que APPS, pero con una lista de aplicaciones distinta,
+sin los botones NUEVO/UNSELECT/MTO/AJUSTES (por ahora esta pantalla solo
+necesita ATRAS e INSTALAR) y sin generar el reporte HTML/CSV al terminar
+(no hace falta en esta pantalla).
 
 GEMALTO / 3M / DESKO son mutuamente excluyentes (solo uno se puede marcar a
 la vez) mediante el mecanismo de "grupo exclusivo" de
@@ -18,8 +19,6 @@ genérico.
 """
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -27,19 +26,20 @@ from typing import Callable
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from app.config import ASSETS_DIR, AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
 from app.installer import InstallManager
-from app.report import generate_report
 from app.shares_config_apply import SharesConfigError, apply_shares_configuration, apply_udf_configuration
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.shares_config_panel import SharesConfigPanel
@@ -82,24 +82,39 @@ class LtpCssWindow(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
 
+        # El catálogo y el panel de "Shares Configuracion" van dentro de un
+        # QScrollArea: así, sin importar cuánto contenido haya (el panel
+        # agrega bastante alto) ni qué tan chica sea la pantalla del
+        # técnico, ATRAS e INSTALAR quedan siempre fijos y completos abajo
+        # en vez de empujarse fuera de la vista.
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+
         columns_row = QHBoxLayout()
         columns_row.setSpacing(30)
         for column in self.columns:
             columns_row.addLayout(build_checkbox_column(column, self.checkboxes))
         columns_row.addStretch(1)
-        root.addLayout(columns_row)
+        scroll_layout.addLayout(columns_row)
 
         # Panel de "Shares Configuracion": oculto por defecto, aparece
         # cuando se marca esa casilla en el catálogo de arriba.
         self.shares_config_panel = SharesConfigPanel()
         self.shares_config_panel.setVisible(False)
-        root.addWidget(self.shares_config_panel)
+        scroll_layout.addWidget(self.shares_config_panel)
         if "shares_configuracion" in self.checkboxes:
             _item, shares_checkbox = self.checkboxes["shares_configuracion"]
             shares_checkbox.toggled.connect(self.shares_config_panel.setVisible)
             self.shares_config_panel.setVisible(shares_checkbox.isChecked())
 
-        root.addStretch(1)
+        scroll_layout.addStretch(1)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setWidget(scroll_content)
+        root.addWidget(scroll_area, 1)
 
         status_row = QHBoxLayout()
         self.status_label = QLabel("Listo.")
@@ -270,6 +285,13 @@ class LtpCssWindow(QMainWindow):
         checkbox.style().polish(checkbox)
         self.status_label.setText(f"Shares Configuracion aplicada ({detail}).")
 
+        # Con la casilla ya oculta (igual que cualquier ítem completado), el
+        # panel tampoco debe seguir viéndose. Los campos LNIATA son de un
+        # solo uso: se limpian para la próxima vez. HOSTNAME y CIUDAD SÍ
+        # deben quedar (identifican al equipo, no cambian entre corridas).
+        self.shares_config_panel.setVisible(False)
+        self.shares_config_panel.reset_lniata_fields()
+
     # --------------------------------------------------------- señales cola
     def _on_item_started(self, item_id: str) -> None:
         _item, checkbox = self.checkboxes[item_id]
@@ -303,24 +325,13 @@ class LtpCssWindow(QMainWindow):
         error = self._results["error"]
         self.status_label.setText(f"Instalación finalizada: {ok} correctas, {error} con error.")
 
-        try:
-            report_html, _report_csv = generate_report(self._install_records, section_label="LTP_CSS")
-            report_msg = f"\n\nReporte generado en:\n{report_html}"
-        except Exception as exc:
-            report_html = None
-            report_msg = f"\n\nNo se pudo generar el reporte: {exc}"
-
+        # A diferencia de APPS, esta pantalla no genera reporte HTML/CSV al
+        # terminar — no hace falta aquí.
         QMessageBox.information(
             self,
             "Instalación finalizada",
-            f"Completadas: {ok}\nCon error: {error}\n\nRevisa la carpeta 'logs' para el detalle.{report_msg}",
+            f"Completadas: {ok}\nCon error: {error}\n\nRevisa la carpeta 'logs' para el detalle.",
         )
-
-        if report_html and sys.platform == "win32":
-            try:
-                os.startfile(report_html)
-            except OSError:
-                pass
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         self.installar_btn.setEnabled(enabled)

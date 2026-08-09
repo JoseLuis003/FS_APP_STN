@@ -7,9 +7,9 @@ Trae tres secciones, tal como en la pantalla original:
 
 - SETTING's: HOSTNAME y CIUDAD (casilla + campo editable, precargados con
   el nombre real del equipo — CIUDAD toma las primeras 3 letras de ese
-  nombre), los 4 campos LNIATA (casilla + campo alfanumérico limitado a 6
-  caracteres, para evitar errores de tecleo) y CONTINGENCIA (solo casilla,
-  sin campo).
+  nombre, y no permite escribir más de 3 caracteres), los 4 campos LNIATA
+  (casilla + campo alfanumérico limitado a 6 caracteres, para evitar
+  errores de tecleo) y CONTINGENCIA (solo casilla, sin campo).
 - DEVICES: BGR, OCR (WGE queda deshabilitado por ahora, como en la imagen
   de referencia).
 - CRT's: 2, 4.
@@ -36,6 +36,9 @@ from PySide6.QtWidgets import (
 # Los campos LNIATA aceptan letras y números (alfanumérico), hasta este
 # máximo de caracteres.
 LNIATA_MAX_LENGTH = 6
+
+# CIUDAD es un código de 3 caracteres (ej. "PTY", "MDE", "BOG").
+CIUDAD_MAX_LENGTH = 3
 
 # Sufijos de los 4 campos LNIATA, en el mismo orden que la imagen de
 # referencia (CRT, ATB, BTP, DCP).
@@ -98,6 +101,7 @@ class SharesConfigPanel(QWidget):
         ciudad_row = len(_LNIATA_SUFFIXES) + 1
         self.ciudad_check = QCheckBox("CIUDAD")
         self.ciudad_edit = QLineEdit(ciudad_default)
+        self.ciudad_edit.setMaxLength(CIUDAD_MAX_LENGTH)
         self._add_setting_row(settings_layout, ciudad_row, self.ciudad_check, self.ciudad_edit)
         self.ciudad_check.setChecked(True)
 
@@ -147,3 +151,12 @@ class SharesConfigPanel(QWidget):
         for check, edit in pairs:
             edit.setEnabled(check.isChecked())
             check.toggled.connect(edit.setEnabled)
+
+    def reset_lniata_fields(self) -> None:
+        """Limpia los 4 campos LNIATA (casilla desmarcada + texto vacío)
+        después de aplicar la configuración con éxito — son valores de un
+        solo uso para esa corrida. HOSTNAME y CIUDAD NO se tocan aquí:
+        identifican al equipo y deben quedar para la próxima vez."""
+        for suffix in _LNIATA_SUFFIXES:
+            self.lniata_checks[suffix].setChecked(False)
+            self.lniata_edits[suffix].clear()

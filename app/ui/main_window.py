@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import (
-    ASSETS_DIR,
     AppItem,
     Settings,
     add_app_item,
@@ -49,7 +48,6 @@ from app.installer import InstallManager
 from app.installer_detect import detect_silent_args
 from app.report import generate_report
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
-from app.ui.styles import build_stylesheet
 
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
@@ -574,7 +572,11 @@ class MainWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
         self.setWindowTitle("FS_APP_STN - Instalador desatendido")
-        self.setStyleSheet(build_stylesheet(ASSETS_DIR))
+        # La hoja de estilos (checkboxes, botones, QMessageBox, etc.) se
+        # aplica a nivel de QApplication en `main.py` -- así también la
+        # heredan los QMessageBox de esta ventana, que son diálogos de
+        # nivel superior aparte y no heredan un `.setStyleSheet()` puesto
+        # solo acá (ver comentario en `main.py`).
         self.resize(900, 650)
 
         # Si se abrió desde la portada (FS APP PORTABLE -> APPS), este

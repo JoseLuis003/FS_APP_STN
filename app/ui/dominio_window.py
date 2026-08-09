@@ -44,7 +44,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import ASSETS_DIR
 from app.domain_join import (
     OU_OPTIONS,
     USERNAME_DOMAIN_PREFIX,
@@ -53,7 +52,6 @@ from app.domain_join import (
     apply_post_join_setup,
     join_domain,
 )
-from app.ui.styles import build_stylesheet
 
 _DEFAULT_WIDTH = 480
 _DEFAULT_HEIGHT = 440
@@ -124,7 +122,10 @@ class DominioWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
         self.setWindowTitle("FS APP PORTABLE - DOMINIO")
-        self.setStyleSheet(build_stylesheet(ASSETS_DIR))
+        # La hoja de estilos se aplica a nivel de QApplication en
+        # `main.py` -- así también la heredan los QMessageBox de esta
+        # ventana (diálogos de nivel superior aparte, que no heredan un
+        # `.setStyleSheet()` puesto solo sobre esta ventana).
         self.resize(*_initial_window_size())
 
         # Si se abrió desde la portada, este callback regresa a esa

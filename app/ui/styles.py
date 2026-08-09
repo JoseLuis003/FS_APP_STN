@@ -24,6 +24,21 @@ QMainWindow {{
     background-color: #eceae7;
 }}
 
+/* Antes esta hoja de estilos se aplicaba con `.setStyleSheet(...)` en cada
+   ventana por separado, y un QMessageBox (los diálogos de "Instalación
+   finalizada", "No se pudo unir al dominio", etc.) es una ventana de nivel
+   superior aparte -- NO hereda el `.setStyleSheet()` de la ventana que lo
+   abrió, solo lo que esté puesto a nivel de QApplication (ver `main.py`).
+   Por eso esos diálogos se veían con la paleta cruda del sistema: en
+   Windows con tema oscuro, fondo negro con letras casi del mismo tono.
+   Con la regla de `QLabel` de arriba ya el texto queda oscuro y legible;
+   acá se fija el fondo del propio cuadro de diálogo para que haga
+   contraste con ese texto oscuro.
+*/
+QMessageBox {{
+    background-color: #eceae7;
+}}
+
 /* Mismo problema que el QScrollArea de más abajo: un QLabel normal (sin
    `objectName`, como los textos de introducción o las etiquetas que arma
    QFormLayout — "Nombre del equipo:", "Usuario:", etc.) no tiene color de

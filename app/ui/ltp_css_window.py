@@ -61,19 +61,21 @@ def _initial_window_size() -> tuple[int, int]:
         height = min(height, max(available.height() - _SCREEN_MARGIN, 300))
     return width, height
 
-from app.config import ASSETS_DIR, AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
+from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
 from app.installer import InstallManager
 from app.shares_config_apply import SharesConfigError, apply_shares_configuration, apply_udf_configuration
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.shares_config_panel import SharesConfigPanel
-from app.ui.styles import build_stylesheet
 
 
 class LtpCssWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
         self.setWindowTitle("FS APP PORTABLE - LTP / CSS")
-        self.setStyleSheet(build_stylesheet(ASSETS_DIR))
+        # La hoja de estilos se aplica a nivel de QApplication en
+        # `main.py` -- así también la heredan los QMessageBox de esta
+        # ventana (diálogos de nivel superior aparte, que no heredan un
+        # `.setStyleSheet()` puesto solo sobre esta ventana).
         # Se recorta al tamaño disponible de la pantalla si hace falta (ver
         # `_initial_window_size`) — el contenido que no quepa se ve
         # haciendo scroll, así que la ventana nunca se abre más alta que la

@@ -40,8 +40,9 @@ al presionarlos.
 - **AJUSTES**: configura la carpeta base de instaladores (con selector de
   carpeta) y da acceso a "Editar versiones de las aplicaciones..." y
   "Agregar aplicación..." (ver secciones abajo).
-- El botón **ATRAS** de la app original no se incluyó (no aplicaba a este
-  flujo).
+- **ATRAS**: regresa a la portada (FS APP PORTABLE). Reutiliza la misma
+  ventana de instalación si se vuelve a entrar por APPS (no recarga el
+  catálogo desde cero).
 - Al presionar INSTALAR se instala directo, sin diálogo de confirmación
   previo.
 - Arriba del botón INSTALAR siempre se ve la ruta exacta desde la que la
@@ -60,14 +61,27 @@ al presionarlos.
 - El nombre y la versión que se ven en cada checkbox y en el reporte salen
   del campo `label`/`version` de `config/apps.json`.
 
-## Actualizar la versión de una aplicación (sin editar JSON a mano)
+## Editar, actualizar o eliminar una aplicación del catálogo (sin tocar JSON a mano)
 
 AJUSTES → "Editar versiones de las aplicaciones..." abre una tabla con
-todas las apps del catálogo y su versión actual. Cualquier compañero de
-soporte puede buscar la aplicación, escribir la versión nueva y presionar
-Guardar — se actualiza `config/apps.json` automáticamente (solo el campo
-`version`, no toca instalador ni argumentos) y el cambio queda activo de
-inmediato, sin reiniciar la app ni tocar ningún archivo a mano.
+todas las apps del catálogo, con tres formas de modificarlas:
+
+- **Versión**: escribe la versión nueva en esa columna y presiona Guardar
+  (se guarda como "N/D" si queda vacía). Solo toca el campo `version`, no
+  el instalador ni los argumentos.
+- **Actualizar instalador...**: reemplaza el instalador de esa app por un
+  archivo nuevo (por ejemplo, la versión más reciente descargada del
+  fabricante). Copia el archivo elegido a la misma carpeta que ya tenía esa
+  app dentro de `CM APPS\APPS`, borra el instalador anterior si tenía otro
+  nombre de archivo, y pide la versión nueva. Aplica de inmediato — no hace
+  falta presionar Guardar.
+- **Eliminar**: pide confirmación, quita la app del catálogo y borra su
+  carpeta completa dentro de `CM APPS\APPS`. También aplica de inmediato y
+  no se puede deshacer.
+
+Cualquier compañero de soporte puede hacer esto sin reiniciar la app ni
+tocar ningún archivo a mano; los cambios de instalador o eliminación se
+reflejan en la lista principal en cuanto se cierra AJUSTES.
 
 ## Agregar una aplicación nueva al catálogo (sin editar JSON a mano)
 
@@ -291,7 +305,8 @@ hora, comando ejecutado y código de salida (0 y 3010 se consideran éxito;
 
 1. Confirmar los `silent_args` reales de cada instalador contra los
    paquetes que usa Copa.
-2. Definir el comportamiento de NUEVO / ATRAS / MTO.
+2. Definir qué deben hacer las secciones LTP / CSS y DOMINIO de la portada
+   (por ahora solo muestran un aviso de "próximamente").
 3. Decidir si el modo de instalación debe poder ser paralelo (varias a la
    vez) en vez de secuencial — hoy corre una por una para evitar
    contención de recursos.

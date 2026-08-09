@@ -172,9 +172,16 @@ class HomeWindow(QMainWindow):
 
     def _on_apps(self) -> None:
         if self.main_window is None:
-            self.main_window = MainWindow()
+            self.main_window = MainWindow(on_back=self._on_back_to_home)
         self.main_window.show()
         self.hide()
+
+    def _on_back_to_home(self) -> None:
+        """Se conecta al botón ATRAS del catálogo de instalación (MainWindow)
+        para volver a mostrar esta portada."""
+        self.show()
+        if self.main_window is not None:
+            self.main_window.hide()
 
     def _show_placeholder(self, section_name: str) -> None:
         QMessageBox.information(

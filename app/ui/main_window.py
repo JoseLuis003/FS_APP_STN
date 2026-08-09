@@ -6,6 +6,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -37,9 +39,11 @@ from app.config import (
     add_app_item,
     load_app_columns,
     load_settings,
+    remove_app_item,
     save_app_versions,
     save_settings,
     slugify_id,
+    update_app_installer,
 )
 from app.installer import InstallManager
 from app.installer_detect import detect_silent_args
@@ -75,46 +79,54 @@ MTO_PRESET_IDS = {
 
 
 class CatalogEditorDialog(QDialog):
-    """Diálogo 'Editar versiones': una tabla simple donde un compañero de
-    soporte puede actualizar la versión de cada aplicación sin tocar el
-    archivo apps.json a mano. Guarda directo al archivo y también deja
-    actualizados los AppItem que ya está usando la ventana principal."""
+    """Diálogo 'Editar versiones': una tabla donde un compañero de soporte
+    puede, sin tocar `apps.json` a mano:
+    - escribir la versión de cada aplicación (columna "Versión" + botón
+      Guardar, como antes);
+    - reemplazar el instalador de una app por uno nuevo ("Actualizar
+      instalador..."), que copia el archivo elegido a la carpeta de esa app
+      dentro de APPS y actualiza el catálogo al instante;
+    - eliminar una app del catálogo y borrar su carpeta dentro de APPS
+      ("Eliminar").
+    Actualizar y Eliminar aplican de inmediato (son operaciones de archivo,
+    no se pueden "deshacer" con Cancelar); la columna Versión solo se guarda
+    al presionar Guardar."""
 
-    def __init__(self, items: list[AppItem], parent=None):
+    def __init__(self, items: list[AppItem], installers_base_path: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Editar versiones de las aplicaciones")
-        self.setMinimumSize(560, 480)
-        self.items = items
+        self.setWindowTitle("Editar aplicaciones del catálogo")
+        self.setMinimumSize(720, 480)
+        self.items = list(items)
+        self.installers_base_path = installers_base_path
+        # True si Actualizar instalador o Eliminar se usaron (afecta el
+        # catálogo aunque se presione Cancelar, porque ya se escribió en
+        # disco) -- MainWindow usa esto para saber si debe recargar la lista.
+        self.catalog_changed = False
 
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Buscar aplicación...")
         self.search_edit.textChanged.connect(self._filter_rows)
 
-        self.table = QTableWidget(len(items), 2)
-        self.table.setHorizontalHeaderLabels(["Aplicación", "Versión"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Aplicación", "Versión", "", ""])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-
-        for row, item in enumerate(items):
-            name_cell = QTableWidgetItem(item.label)
-            name_cell.setFlags(name_cell.flags() & ~Qt.ItemIsEditable)
-            version_text = item.version if item.version and item.version != "N/D" else ""
-            version_cell = QTableWidgetItem(version_text)
-            self.table.setItem(row, 0, name_cell)
-            self.table.setItem(row, 1, version_cell)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
 
         hint = QLabel(
-            "Escribe la versión de cada aplicación en la columna derecha y presiona "
-            "Guardar. Deja el campo vacío si no aplica (se guarda como \"N/D\")."
+            "Columna \"Versión\": escríbela y presiona Guardar (se guarda como \"N/D\" si "
+            "queda vacía). \"Actualizar instalador...\" y \"Eliminar\" aplican de inmediato, "
+            "sin esperar a Guardar."
         )
         hint.setWordWrap(True)
 
         save_btn = QPushButton("Guardar")
-        cancel_btn = QPushButton("Cancelar")
+        cancel_btn = QPushButton("Cerrar")
         save_btn.clicked.connect(self._on_save)
-        cancel_btn.clicked.connect(self.reject)
+        cancel_btn.clicked.connect(self._on_close)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
@@ -127,11 +139,125 @@ class CatalogEditorDialog(QDialog):
         layout.addWidget(self.table)
         layout.addLayout(btn_row)
 
+        self._populate_table()
+
+    def _populate_table(self) -> None:
+        self.table.setRowCount(len(self.items))
+        for row, item in enumerate(self.items):
+            name_cell = QTableWidgetItem(item.label)
+            name_cell.setFlags(name_cell.flags() & ~Qt.ItemIsEditable)
+            version_text = item.version if item.version and item.version != "N/D" else ""
+            version_cell = QTableWidgetItem(version_text)
+            self.table.setItem(row, 0, name_cell)
+            self.table.setItem(row, 1, version_cell)
+
+            update_btn = QPushButton("Actualizar instalador...")
+            update_btn.clicked.connect(lambda checked=False, it=item: self._on_update_installer(it))
+            self.table.setCellWidget(row, 2, update_btn)
+
+            delete_btn = QPushButton("Eliminar")
+            delete_btn.setStyleSheet("color: #b03a2e; font-weight: 600;")
+            delete_btn.clicked.connect(lambda checked=False, it=item: self._on_delete_item(it))
+            self.table.setCellWidget(row, 3, delete_btn)
+
     def _filter_rows(self, text: str) -> None:
         text = text.strip().lower()
         for row in range(self.table.rowCount()):
             name = self.table.item(row, 0).text().lower()
             self.table.setRowHidden(row, text not in name)
+
+    def _on_update_installer(self, item: AppItem) -> None:
+        start_dir = self.installers_base_path if Path(self.installers_base_path).exists() else str(Path.home())
+        new_path, _filter = QFileDialog.getOpenFileName(
+            self,
+            f'Nuevo instalador para "{item.label}"',
+            start_dir,
+            "Instaladores (*.exe *.msi *.ps1 *.bat *.cmd)",
+        )
+        if not new_path:
+            return
+
+        base_path = Path(self.installers_base_path)
+        new_file = Path(new_path)
+        current_rel = Path(item.installer)
+        # Se copia a la misma carpeta que ya tenía asignada esa app dentro
+        # de APPS (o a una carpeta nueva con su id, si por algún motivo no
+        # tenía subcarpeta propia).
+        target_dir = base_path / current_rel.parent if str(current_rel.parent) not in ("", ".") else base_path / item.id
+
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_dir / new_file.name
+            shutil.copy2(new_file, target_path)
+            old_path = base_path / item.installer
+            # Si el instalador nuevo tiene otro nombre de archivo, borramos
+            # el anterior para no dejar basura en la carpeta de esa app.
+            if old_path.exists() and old_path.resolve() != target_path.resolve():
+                old_path.unlink()
+            new_relative = target_path.relative_to(base_path).as_posix()
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Error al actualizar", f"No se pudo copiar el nuevo instalador:\n\n{exc}"
+            )
+            return
+
+        current_version = item.version if item.version and item.version != "N/D" else ""
+        new_version, ok = QInputDialog.getText(
+            self,
+            "Versión del instalador",
+            f'Versión de "{item.label}" (déjalo vacío si no aplica):',
+            text=current_version,
+        )
+        new_version = (new_version.strip() or "N/D") if ok else item.version
+
+        try:
+            update_app_installer(item.id, installer=new_relative, version=new_version)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error al guardar", f"No se pudo actualizar apps.json:\n\n{exc}")
+            return
+
+        item.installer = new_relative
+        item.version = new_version
+        self.catalog_changed = True
+        self._populate_table()
+        QMessageBox.information(self, "Instalador actualizado", f'Se actualizó el instalador de "{item.label}".')
+
+    def _on_delete_item(self, item: AppItem) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Eliminar aplicación",
+            f'¿Eliminar "{item.label}" del catálogo y borrar su carpeta dentro de APPS?\n\n'
+            "Esta acción no se puede deshacer.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            remove_app_item(item.id)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error al eliminar", f"No se pudo actualizar apps.json:\n\n{exc}")
+            return
+
+        base_path = Path(self.installers_base_path)
+        folder = base_path / Path(item.installer).parent
+        try:
+            # No borrar si la carpeta resultante es la propia carpeta base
+            # (pasaría si el instalador no tenía subcarpeta propia) -- eso
+            # borraría TODO el contenido de APPS por error.
+            if folder.exists() and folder.is_dir() and folder.resolve() != base_path.resolve():
+                shutil.rmtree(folder)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Aviso",
+                f'"{item.label}" se eliminó del catálogo, pero no se pudo borrar su carpeta:\n\n{exc}',
+            )
+
+        self.items = [it for it in self.items if it.id != item.id]
+        self.catalog_changed = True
+        self._populate_table()
 
     def _on_save(self) -> None:
         updates: dict[str, str] = {}
@@ -149,6 +275,14 @@ class CatalogEditorDialog(QDialog):
                 return
 
         self.accept()
+
+    def _on_close(self) -> None:
+        # "Cerrar" en vez de "Cancelar": Actualizar instalador y Eliminar ya
+        # escribieron en disco (self.catalog_changed ya quedó en True si se
+        # usaron), así que no hay nada que "descartar" para esos cambios --
+        # solo se pierden ediciones de versión que no se guardaron con
+        # el botón Guardar.
+        self.reject()
 
 
 class AddAppDialog(QDialog):
@@ -384,8 +518,11 @@ class SettingsDialog(QDialog):
         self._update_path_status()
 
     def _on_edit_versions(self) -> None:
-        dialog = CatalogEditorDialog(self.items, self)
+        base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
+        dialog = CatalogEditorDialog(self.items, base_path, self)
         dialog.exec()
+        if dialog.catalog_changed:
+            self.catalog_changed = True
 
     def _on_add_app(self) -> None:
         base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
@@ -432,11 +569,16 @@ class SettingsDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
         self.setWindowTitle("FS_APP_STN - Instalador desatendido")
         self.setStyleSheet(build_stylesheet(ASSETS_DIR))
         self.resize(900, 650)
+
+        # Si se abrió desde la portada (FS APP PORTABLE -> APPS), este
+        # callback regresa a esa pantalla; si no se indica, ATRAS simplemente
+        # cierra esta ventana.
+        self._on_back = on_back
 
         self.settings = load_settings()
         self.columns = load_app_columns()
@@ -510,16 +652,19 @@ class MainWindow(QMainWindow):
         unselect_btn = QPushButton("UNSELECT")
         ajustes_btn = QPushButton("AJUSTES")
         mto_btn = QPushButton("MTO")
+        atras_btn = QPushButton("ATRAS")
 
         nuevo_btn.clicked.connect(self._on_nuevo)
         unselect_btn.clicked.connect(self._on_unselect)
         ajustes_btn.clicked.connect(self._on_ajustes)
         mto_btn.clicked.connect(self._on_mto)
+        atras_btn.clicked.connect(self._on_atras)
 
         grid.addWidget(nuevo_btn, 0, 0)
         grid.addWidget(unselect_btn, 0, 1)
         grid.addWidget(ajustes_btn, 0, 2)
         grid.addWidget(mto_btn, 1, 0)
+        grid.addWidget(atras_btn, 1, 1)
 
         row.addLayout(grid)
         row.addStretch(1)
@@ -574,6 +719,14 @@ class MainWindow(QMainWindow):
     def _on_unselect(self) -> None:
         for _item, checkbox in self.checkboxes.values():
             checkbox.setChecked(False)
+
+    def _on_atras(self) -> None:
+        """Regresa a la portada (FS APP PORTABLE) si esta ventana se abrió
+        desde ahí; si no, simplemente cierra esta ventana."""
+        if self._on_back is not None:
+            self._on_back()
+        else:
+            self.close()
 
     def _on_ajustes(self) -> None:
         items = [item for item, _checkbox in self.checkboxes.values()]

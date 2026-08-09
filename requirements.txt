@@ -1,1 +1,6 @@
 PySide6>=6.6.0
+# Solo se usa en Windows (crear accesos directos .lnk vía COM en
+# app/shortcuts.py); no se instala/usa en Linux/Mac, donde se desarrolla y
+# prueba esta app -- si `pip install` falla por esto fuera de Windows, se
+# puede omitir para desarrollo local.
+pywin32>=306; sys_platform == "win32"

@@ -74,7 +74,13 @@ def _initial_window_size() -> tuple[int, int]:
 
 from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
 from app.installer import InstallManager
-from app.shares_config_apply import SharesConfigError, apply_shares_configuration, apply_udf_configuration
+from app.shares_config_apply import (
+    SharesConfigError,
+    apply_shares_configuration,
+    apply_udf_configuration,
+    run_contingencia_script,
+)
+from app.shortcuts import ShortcutError, create_ltp_shares_shortcuts
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.main_window import SettingsDialog
 from app.ui.shares_config_panel import SharesConfigPanel
@@ -329,11 +335,15 @@ class LtpCssWindow(QMainWindow):
 
     def _run_shares_configuration(self, shares_entry: tuple[AppItem, QCheckBox]) -> None:
         """Aplica la configuración de Shares (ver `app/shares_config_apply.py`):
-        primero el .XRF (`apply_shares_configuration`, con CIUDAD y HOSTNAME)
-        y después el .INF de la carpeta UDF (`apply_udf_configuration`, con
-        CIUDAD y — para cada LNIATA marcado (CRT/ATB/BTP/DCP) — su valor).
-        Refleja el resultado en la casilla igual que un ítem normal de la
-        cola."""
+        primero el .XRF (`apply_shares_configuration`, con CIUDAD y HOSTNAME),
+        después el .INF de la carpeta UDF (`apply_udf_configuration`, con
+        CIUDAD y — para cada LNIATA marcado (CRT/ATB/BTP/DCP) — su valor), y
+        después, si la casilla CONTINGENCIA está marcada,
+        `run_contingencia_script()` (corre `Contingencia.bat`, un proceso
+        externo real, no una edición de archivo), y por último SIEMPRE
+        `create_ltp_shares_shortcuts()` (deja los 2 accesos directos de
+        Shares en el escritorio público, con CIUDAD ya resuelto). Refleja
+        el resultado en la casilla igual que un ítem normal de la cola."""
         item, checkbox = shares_entry
         checkbox.setProperty("installing", "true")
         checkbox.style().unpolish(checkbox)
@@ -350,6 +360,7 @@ class LtpCssWindow(QMainWindow):
         btp_enabled = self.shares_config_panel.lniata_checks["BTP"].isChecked()
         lniata_dcp = self.shares_config_panel.lniata_edits["DCP"].text()
         dcp_enabled = self.shares_config_panel.lniata_checks["DCP"].isChecked()
+        contingencia_enabled = self.shares_config_panel.contingencia_check.isChecked()
 
         try:
             detail_xrf = apply_shares_configuration(hostname, ciudad)
@@ -365,7 +376,12 @@ class LtpCssWindow(QMainWindow):
                 dcp_enabled=dcp_enabled,
             )
             detail = f"{detail_xrf} | {detail_udf}"
-        except SharesConfigError as exc:
+            if contingencia_enabled:
+                detail_contingencia = run_contingencia_script(self.settings.installers_base_path)
+                detail = f"{detail} | {detail_contingencia}"
+            detail_shortcuts = create_ltp_shares_shortcuts(ciudad)
+            detail = f"{detail} | {detail_shortcuts}"
+        except (SharesConfigError, ShortcutError) as exc:
             self._results["error"] += 1
             checkbox.setProperty("installing", "false")
             checkbox.setProperty("failed", "true")
@@ -390,6 +406,7 @@ class LtpCssWindow(QMainWindow):
         # deben quedar (identifican al equipo, no cambian entre corridas).
         self.shares_config_panel.setVisible(False)
         self.shares_config_panel.reset_lniata_fields()
+        self.shares_config_panel.reset_contingencia()
 
     # --------------------------------------------------------- señales cola
     def _on_item_started(self, item_id: str) -> None:

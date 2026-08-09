@@ -5,17 +5,18 @@
       "groups": [
         {
           "items": [
-            { "id": "bginfo",            "label": "BGInfo",                    "installer": "BGInfo/Bginfo.exe",            "silent_args": "/accepteula bginfo.bgi /timer:0", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "dell_command",      "label": "DELL Command Update 5.5",   "installer": "DellCommandUpdate/Setup.exe",  "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "5.5" },
-            { "id": "dell_optimizer",    "label": "DELL Optimizer",            "installer": "DellOptimizer/Setup.exe",      "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "dell_ownertag",     "label": "DELL OwnerTag",             "installer": "DellOwnerTag/OwnerTag.exe",    "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "key_fn_mode",       "label": "KEY FN Mode - LAPTOP",      "installer": "KeyFnMode/SetFnMode.exe",      "silent_args": "/silent",                         "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "adobe_reader",      "label": "Adobe Reader",              "installer": "AdobeReader/AcroRead.msi",     "silent_args": "/qn /norestart",                  "installer_type": "msi", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "forcepoint",        "label": "ForcePoint 25.02.5708",     "installer": "ForcePoint/Setup.exe",         "silent_args": "/S /v/qn",                        "installer_type": "exe", "default_checked": false, "enabled": true, "version": "25.02.5708" },
-            { "id": "crowdstrike",       "label": "Crowdstrike",               "installer": "Crowdstrike/WindowsSensor.exe","silent_args": "/install /quiet /norestart",      "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "google_chrome",     "label": "Google Chrome",             "installer": "GoogleChrome/ChromeSetup.exe", "silent_args": "/silent /install",                "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "ms_teams_work",     "label": "MS Teams For Work",         "installer": "MSTeams/teamsbootstrapper.exe","silent_args": "-p",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "windows_updates",   "label": "Windows-Updates-w11",       "installer": "WindowsUpdates/run.bat",       "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "bginfo",            "label": "BGInfo",                    "installer": "BGinfo/BGTool.exe",            "silent_args": "/accepteula",                     "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D",
+              "extra_steps": [ { "installer": "BGinfo/bginfo.bat", "silent_args": "", "installer_type": "script" } ] },
+            { "id": "dell_command",      "label": "DELL Command Update",       "installer": "DellCommandUpdate/Dell-Command-Update-Windows-Universal-Application_P0P70_WIN64_5.7.1_A00.EXE", "silent_args": "/s", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "5.7.1" },
+            { "id": "dell_optimizer",    "label": "DELL Optimizer",            "installer": "DellOptimizer/Dell-Optimizer-Application_5N4CV_WIN64_6.3.4.0_A00.EXE", "silent_args": "/s", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "6.3.4.0" },
+            { "id": "dell_ownertag",     "label": "DELL OwnerTag",             "installer": "Dell_Owner_Tag/DELL_Owner_Tag_x64.exe", "silent_args": "/s",              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
+            { "id": "key_fn_mode",       "label": "KEY FN Mode - LAPTOP",      "installer": "FNLockMode/FNLockMode_x64.exe","silent_args": "/s",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
+            { "id": "adobe_reader",      "label": "Adobe Reader",              "installer": "AdobeReader/AcroRdrDC2600121771_en_US.exe", "silent_args": "/sPB",               "installer_type": "exe", "default_checked": false, "enabled": true, "version": "2026.001.21771" },
+            { "id": "forcepoint",        "label": "NetSkopeClient",            "installer": "NetSkopeClient/Install_NSK.bat","silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "crowdstrike",       "label": "Crowdstrike",               "installer": "Crowdstrike/WindowsSensor.exe","silent_args": "/install /passive /norestart CID=A51E4A84E9B3404B9AC8B70A1A8B7E8E-74", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "google_chrome",     "label": "Google Chrome",             "installer": "Google Chrome/googlechromestandaloneenterprise64.msi", "silent_args": "/passive", "installer_type": "msi", "default_checked": false, "enabled": true, "version": "151.0.7922.109" },
+            { "id": "ms_teams_work",     "label": "Microsoft Teams",           "installer": "Microsoft Teams/Install.bat",  "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "windows_updates",   "label": "Windows-Updates-w11",       "installer": "WUSA/Install_WUSA.ps1",        "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         }
       ]
@@ -24,19 +25,27 @@
       "groups": [
         {
           "items": [
-            { "id": "anyconnect",        "label": "Anyconnect  5.1.10.233",    "installer": "AnyConnect/anyconnect-win.msi","silent_args": "/qn /norestart",                  "installer_type": "msi", "default_checked": false, "enabled": true, "version": "5.1.10.233" },
-            { "id": "background",       "label": "BackGround",                "installer": "Background/SetWallpaper.exe",  "silent_args": "/silent",                         "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "ajustes_necesarios","label": "AJUSTES NECESARIOS",        "installer": "AjustesNecesarios/apply.ps1",  "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "registro_ad",      "label": "REGISTRO EN AD",            "installer": "RegistroAD/join_domain.ps1",   "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "shortcuts",        "label": "Shorcut's",                 "installer": "Shortcuts/create_shortcuts.ps1","silent_args": "",                               "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "manage_engine",    "label": "Manage Engine",             "installer": "ManageEngine/Setup.exe",       "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "anyconnect",        "label": "VPN",                       "installer": "VPN/cisco-secure-client-win-5.1.10.233-core-vpn-predeploy-k9.msi", "silent_args": "/passive", "installer_type": "msi", "default_checked": false, "enabled": true, "version": "5.1.10.233",
+              "extra_steps": [ { "installer": "VPN/copy.bat", "silent_args": "", "installer_type": "script" } ] },
+            { "id": "background",       "label": "BackGround",                "installer": "Scripts/IMAGEN-STN/background.bat", "silent_args": "",                           "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "ajustes_necesarios","label": "AJUSTES NECESARIOS",        "installer": "Scripts/AJUSTES_NECESARIOS.bat", "silent_args": "",                              "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "registro_ad",      "label": "REGISTRO EN AD",            "installer": "Scripts/WindowsTH-KB2693643-x64.msu", "silent_args": "/quiet /norestart",         "installer_type": "msu", "default_checked": false, "enabled": true, "version": "N/D",
+              "extra_steps": [ { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" } ] },
+            { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "Scripts/Shortcut STN.bat",     "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         },
         {
           "items": [
-            { "id": "bfirst",           "label": "BFirst",                    "installer": "BFirst/Setup.exe",             "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAPGUI/NwSapSetup.exe",        "silent_args": "/silent",                         "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8" },
-            { "id": "ms365",           "label": "MS 365 2505",                "installer": "MS365/setup.exe",              "silent_args": "/configure configuration.xml",    "installer_type": "exe", "default_checked": false, "enabled": true, "version": "2505" }
+            { "id": "bfirst",           "label": "BFirst",                    "installer": "BFirst/setupbolapp.exe",       "silent_args": "/S /v/qn",                        "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D",
+              "extra_steps": [ { "installer": "BFirst/copy.bat", "silent_args": "", "installer_type": "script" } ] },
+            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/passive /norestart",       "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8",
+              "extra_steps": [
+                { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/NoDlg /product=SAPGUI", "installer_type": "exe" },
+                { "installer": "SAP_GUI_7.80/parche 32 bits/GUI800_4-80006341.EXE", "silent_args": "/NoDlg", "installer_type": "exe" },
+                { "installer": "SAP_GUI_7.80/Win32/SAPSetupSLC.exe", "silent_args": "/noDLG", "installer_type": "exe" },
+                { "installer": "SAP_GUI_7.80/Win32/copy.bat", "silent_args": "", "installer_type": "script" }
+              ] }
           ]
         }
       ]
@@ -45,15 +54,15 @@
       "groups": [
         {
           "items": [
-            { "id": "isoview",          "label": "ISOView",                   "installer": "ISOView/Setup.exe",            "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "cortana",          "label": "Cortana",                   "installer": "Cortana/DisableCortana.ps1",   "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "toolbox_print",    "label": "Toolbox Print",             "installer": "ToolboxPrint/Setup.exe",       "silent_args": "/S",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "shortcut_mto",     "label": "ShortCut-MTO",              "installer": "ShortcutMTO/create.ps1",       "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "isoview",          "label": "ISOView",                   "installer": "MTO/IGView-v7.1.0.28_IsoView-7.1.60.9D.exe", "silent_args": "",                  "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.1.60.9D" },
+            { "id": "cortana",          "label": "Cortana",                   "installer": "MTO/cortona3d_x64.msi",        "silent_args": "/passive",                        "installer_type": "msi", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "toolbox_print",    "label": "Toolbox Print",             "installer": "MTO/Toolbox_QuickPrint_Control_2.23.0.5.msi", "silent_args": "/passive",          "installer_type": "msi", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "shortcut_mto",     "label": "ShortCut-MTO",              "installer": "MTO/ShortCut_MTO.bat",         "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         },
         {
           "items": [
-            { "id": "netfx35",          "label": "NetFX35",                   "installer": "NetFX35/dism_enable.ps1",      "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "netfx35",          "label": "NetFX35",                   "installer": "NetFX35/INSTALL.cmd",          "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         }
       ]

@@ -160,3 +160,9 @@ class SharesConfigPanel(QWidget):
         for suffix in _LNIATA_SUFFIXES:
             self.lniata_checks[suffix].setChecked(False)
             self.lniata_edits[suffix].clear()
+
+    def reset_contingencia(self) -> None:
+        """Desmarca la casilla CONTINGENCIA después de correr el script con
+        éxito — es una acción de un solo uso para esa corrida, igual que los
+        campos LNIATA."""
+        self.contingencia_check.setChecked(False)

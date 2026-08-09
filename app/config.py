@@ -81,7 +81,7 @@ class AppItem:
     label: str
     installer: str
     silent_args: str = ""
-    installer_type: str = "exe"  # exe | msi | script
+    installer_type: str = "exe"  # exe | msi | msu | script | open | python
     default_checked: bool = False
     enabled: bool = True
     version: str = "N/D"
@@ -90,6 +90,25 @@ class AppItem:
     # juntos en una fila y solo se puede marcar uno a la vez (ver
     # app/ui/catalog_widgets.py). Ejemplo: GEMALTO / 3M / DESKO.
     exclusive_group: str = ""
+    # Algunas apps necesitan correr más de un paquete en secuencia bajo UNA
+    # sola casilla (ej. BGInfo: primero el .exe, después un .bat; SAP GUI:
+    # 5 pasos). `installer`/`silent_args`/`installer_type` de arriba son
+    # siempre el PRIMER paso; cada elemento de esta lista es un paso
+    # adicional que se ejecuta después, en orden, solo si el anterior tuvo
+    # éxito -- ver `app/installer.py` (`InstallWorker`). Cada elemento es un
+    # dict con las mismas claves: {"installer": "...", "silent_args": "...",
+    # "installer_type": "exe|msi|msu|script|open|python"}. "open" abre el
+    # archivo (PDF, o un .exe ya instalado) sin esperar resultado -- ver
+    # `app/installer.py`. Tanto el `installer` principal como los de cada
+    # paso pueden ser una ruta absoluta de Windows (ej. "C:\\Program Files\\
+    # ...") en vez de relativa a `installers_base_path` -- útil para abrir
+    # algo que un paso anterior ya instaló en una ubicación fija. "python"
+    # no apunta a un archivo: "installer" es la clave de una función
+    # registrada en `_PYTHON_STEP_HANDLERS` (app/installer.py) -- para
+    # lógica que se portó directo a Python en vez de quedar como un script
+    # suelto en la carpeta de instaladores (ej. `shares_5_0`, ver
+    # `app/shares_setup.py`).
+    extra_steps: list[dict] = field(default_factory=list)
 
     def resolved_installer_path(self, installers_base_path: str) -> Path:
         base = Path(installers_base_path)
@@ -243,6 +262,7 @@ def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:
                     enabled=it.get("enabled", True),
                     version=it.get("version", "N/D"),
                     exclusive_group=it.get("exclusive_group", ""),
+                    extra_steps=it.get("extra_steps", []),
                 )
                 for it in grp.get("items", [])
             ]

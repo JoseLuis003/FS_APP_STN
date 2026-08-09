@@ -194,17 +194,30 @@ vuelve a desmarcar. Dentro de SETTING's:
 - Los 4 campos **LNIATA** (CRT, ATB, BTP, DCP) empiezan desmarcados y
   vacíos, y aceptan letras y números (alfanumérico) hasta un máximo de 6
   caracteres, para evitar errores de tecleo.
-- **CONTINGENCIA** es solo una casilla, sin campo asociado.
+- **CONTINGENCIA** es solo una casilla, sin campo asociado. Si está
+  marcada al presionar INSTALAR, además de los dos pasos de archivo de
+  abajo corre `LTP TRAVEL DOC\Contingencia.bat` (`run_contingencia_script()`
+  en `app/shares_config_apply.py`) — a diferencia de esos dos pasos, esto sí
+  es un proceso externo real, y su ruta es relativa a la carpeta de
+  instaladores (`installers_base_path`, la misma que usa el resto del
+  catálogo LTP / CSS), no a `C:\LTP\AppDatCM`. Se considera éxito el código
+  de salida 0 o 3010 (igual que el resto del motor de instalación); si el
+  script no existe, se agota el tiempo de espera (10 min) o termina con
+  otro código, se marca como error igual que el resto de esta acción. Si la
+  casilla NO está marcada, el script nunca se invoca.
 - En todos los campos con casilla, el campo de texto solo se puede editar
   mientras su casilla esté marcada (se deshabilita al desmarcarla, pero
   conserva lo escrito).
 
 Al presionar INSTALAR y aplicarse la configuración con éxito, la casilla
 "Shares Configuracion" se oculta (igual que cualquier ítem completado) y
-el panel se cierra junto con ella. Los 4 campos LNIATA se limpian (casilla
-y texto) para la próxima vez, porque son valores de un solo uso; HOSTNAME
-y CIUDAD SÍ quedan tal cual, porque identifican al equipo y no cambian
-entre corridas.
+el panel se cierra junto con ella. Los 4 campos LNIATA y la casilla
+CONTINGENCIA se limpian (o desmarcan) para la próxima vez, porque son
+valores de un solo uso; HOSTNAME y CIUDAD SÍ quedan tal cual, porque
+identifican al equipo y no cambian entre corridas. Si CONTINGENCIA falla
+(por ejemplo, no se encuentra `Contingencia.bat`), la casilla queda
+marcada y el resto del panel se comporta igual que cualquier otro error de
+esta acción.
 
 Las secciones DEVICES (BGR, OCR — WGE deshabilitado por ahora) y CRT's (2,
 4) por ahora son casillas simples, sin ninguna regla especial todavía.
@@ -259,10 +272,68 @@ En todos los casos se reemplaza solo el valor indicado, sin quitar las
 comas ni tocar el resto de la línea, y es igual de idempotente que el
 paso del `.XRF`.
 
-**Importante:** igual que en `apps.json`, los valores de `installer` y
-`silent_args` de `ltp_css_apps.json` son placeholders — hay que revisarlos
-contra los instaladores reales (EPSON, GEMALTO, 3M, DESKO, AppShell, etc.)
-antes de usar esto en producción.
+**Accesos directos de Shares (`app/shortcuts.py`):** por último, si los 2
+pasos de arriba (y CONTINGENCIA, si estaba marcado) terminaron sin error,
+`create_ltp_shares_shortcuts()` deja 2 accesos directos en el escritorio
+público (`C:\Users\Public\Desktop`, visible para cualquier usuario del
+equipo sin importar con qué cuenta se inició sesión):
+
+- **LTP SHARES.lnk** → `C:\LTP\LTPGUI32.exe`, argumentos
+  ` /ACM /CC<CIUDAD> /W%COMPUTERNAME% /SU%COMPUTERNAME%`.
+- **LiteGUI.lnk** → `C:\LTP\LTPHPS32.exe`, argumentos
+  ` /ACM /W%COMPUTERNAME% /SU%COMPUTERNAME% /CC<CIUDAD>`.
+
+`<CIUDAD>` se reemplaza por el valor real del campo CIUDAD del panel, pero
+`%COMPUTERNAME%` se deja tal cual, como texto literal — igual que en el
+código VB.NET original del que se portó esta función: no lo expande el
+acceso directo ni quien lo crea, sino `LTPGUI32.exe` / `LTPHPS32.exe` al
+arrancar. Se crean con `pywin32` (`win32com.client.Dispatch("WScript.Shell")`,
+el mismo objeto COM que usaba el VB.NET original vía `CreateObject`), así
+que esto solo funciona en Windows — de ahí que la dependencia `pywin32` en
+`requirements.txt` esté marcada como exclusiva de `sys_platform == "win32"`.
+Si falla (por ejemplo, `C:\LTP` no existe todavía), se marca como error
+igual que cualquier otro paso de esta acción, y el resto de la cola sigue
+su curso con normalidad.
+
+**Pasos posteriores a instalar Shares 5.0 (`app/shares_setup.py`):** el
+ítem `shares_5_0` del catálogo tiene un `extra_step` con
+`"installer_type": "python"` — un tipo de paso que, a diferencia del
+resto, no apunta a ningún archivo instalador: `"installer"` es la clave
+`"ltp_shares_post_install"`, que el motor de instalación
+(`app/installer.py`, `_python_step_handlers()`) resuelve a una función de
+Python real, no a un proceso externo. Esta función es el port directo a
+Python del `.bat` que antes se corría a mano después de instalar Shares
+5.0 ("LTP setting.bat"), en el mismo orden:
+
+1. `icacls C:\LTP /grant Everyone:(OI)(CI)F` — da control total a
+   cualquier usuario del equipo sobre esa carpeta.
+2. Copia las fuentes (`*.fon`, `*.ttf`) que el propio `.msi` deja en
+   `C:\LTP\Fonts` hacia `C:\Windows\Fonts`.
+3. Importa `C:\LTP\Fonts\ALCFONXP.REG` con `regedit /s` (registra esas
+   fuentes en Windows).
+4. Borra el acceso directo que el instalador de Shares deja solo en el
+   escritorio del usuario actual ("Shares LTPGUI32.exe.lnk") — a
+   diferencia de los otros 4 pasos, si ya no está no se considera error
+   (limpieza best-effort, igual que el `Del` del `.bat` original).
+5. Desregistra y vuelve a registrar los 5 controles OCX de Shares
+   (COMCTL32, mscomctl, comdlg32, msadodc, tabctl32), todos dentro de
+   `C:\LTP`.
+
+Se detiene en el primer paso que falle (falta un archivo, código de
+salida distinto de 0, etc.), igual que cualquier secuencia de
+`extra_steps` del catálogo — con la salvedad del paso 4, que nunca falla
+por sí solo. Este tipo de paso (`"python"`) es para lógica que ya no tiene
+sentido dejar como un script suelto en la carpeta compartida de
+instaladores, y en cambio se porta directo a código Python empaquetado
+dentro de la app, con su propio manejo de errores por paso en vez de
+depender de un único código de salida de todo un `.bat`.
+
+**Nota:** los ítems del catálogo LTP / CSS (EPSON UTILITY, GEMALTO, 3M,
+DESKO, EPSON USB DRIVER, VIRTUAL PORT, BGR IER, CUSTOM, Shares 5.0 y
+AppShell 4.00.0030) ya tienen instaladores/switches/versiones reales en
+`ltp_css_apps.json`. Solo **Shares Configuracion** y **AppShell
+Configuracion** siguen con rutas de ejemplo (placeholders) — hay que
+revisarlas antes de usarlas en producción.
 
 ## Reporte de instalación
 
@@ -422,12 +493,80 @@ Cada aplicación se define así:
 ```
 
 - `installer`: ruta **relativa** a `installers_base_path` (definido en
-  `settings.json`, editable también desde el botón AJUSTES).
-- `installer_type`: `exe`, `msi` (se ejecuta con `msiexec /i`) o `script`
-  (`.ps1` se ejecuta con PowerShell, `.bat`/`.cmd` directo).
+  `settings.json`, editable también desde el botón AJUSTES) — o, si hace
+  falta, una ruta **absoluta** de Windows (`C:\Program Files\...`,
+  `\\servidor\recurso\...`) que se usa tal cual, sin unirla a
+  `installers_base_path`. Útil para abrir algo que un paso anterior ya dejó
+  instalado en una ubicación fija (ver CUSTOM en `ltp_css_apps.json`). La
+  detección es por expresión regular (`^([A-Za-z]:[\\/]|\\\\)` en
+  `app/installer.py`), no con `Path.is_absolute()`, porque esa función
+  cambia de comportamiento según el sistema operativo donde corre (en
+  Linux, donde se prueba esta app, una ruta `C:\...` no se considera
+  absoluta).
+- `installer_type`: `exe`, `msi` (se ejecuta con `msiexec /i`), `msu`
+  (paquete independiente de Windows Update — se ejecuta con `wusa.exe`, ya
+  que a diferencia de un `.exe` no es un ejecutable en sí), `script`
+  (`.ps1` se ejecuta con PowerShell; `.bat`/`.cmd` se ejecuta directo, ya
+  que Windows los asocia automáticamente al intérprete de comandos incluso
+  sin pasar por una shell explícita), `open` (abre el archivo con
+  `os.startfile()` — un PDF, o un `.exe` ya instalado que el técnico debe
+  usar manualmente — y sigue de inmediato: no es un proceso que se
+  "instale" con código de salida, así que no se espera ni bloquea la cola;
+  se considera éxito en cuanto la llamada no lanza un error), o `python`
+  (no apunta a ningún archivo: `installer` es la clave de una función de
+  Python empaquetada en la app, registrada en `_python_step_handlers()`
+  dentro de `app/installer.py` — para lógica que ya no tiene sentido dejar
+  como un script suelto en la carpeta de instaladores; ver `shares_5_0` /
+  `app/shares_setup.py` más abajo).
 - `silent_args`: los parámetros de instalación silenciosa reales de cada
-  instalador (varían por fabricante — hay que verificarlos contra el
-  instalador real, los que traje son solo ejemplos razonables).
+  instalador (varían por fabricante).
+- `extra_steps` (opcional, lista): algunas aplicaciones necesitan correr
+  más de un paquete bajo UNA sola casilla — por ejemplo BGInfo (el `.exe`
+  y después un `.bat`) o SAP GUI (5 pasos: 3 `.exe`, un instalador con
+  espacio en el nombre de carpeta, y un `.bat` final). `installer` /
+  `silent_args` / `installer_type` de arriba son siempre el PRIMER paso;
+  cada elemento de `extra_steps` es un paso adicional con las mismas tres
+  claves, que se ejecuta *solo si el paso anterior tuvo éxito* — si
+  cualquier paso falla, el ítem completo se marca como fallido ahí mismo,
+  sin intentar los pasos que quedaban. Ejemplo (BGInfo):
+  ```json
+  {
+    "id": "bginfo",
+    "label": "BGInfo",
+    "installer": "BGinfo/BGTool.exe",
+    "silent_args": "/accepteula",
+    "installer_type": "exe",
+    "extra_steps": [
+      { "installer": "BGinfo/bginfo.bat", "silent_args": "", "installer_type": "script" }
+    ]
+  }
+  ```
+  Esta lógica de pasos vive en `app/installer.py` (`InstallWorker.run`,
+  función `_iter_steps`). Nota: el botón "Actualizar instalador..." de
+  AJUSTES (`CatalogEditorDialog`) solo reemplaza el PRIMER paso — si un
+  ítem con `extra_steps` cambia de instalador en un paso que no es el
+  primero, por ahora hay que editar `apps.json` a mano para ese paso.
+  Ejemplo con un paso `open` y una ruta absoluta (CUSTOM en
+  `ltp_css_apps.json` — abre un PDF, instala un `.exe`, abre un `.exe` ya
+  instalado en una ruta fija, e instala otro `.exe`):
+  ```json
+  {
+    "id": "custom",
+    "label": "CUSTOM",
+    "installer": "LTP TRAVEL DOC\\CUSTOM\\MANUAL.pdf",
+    "installer_type": "open",
+    "extra_steps": [
+      { "installer": "LTP TRAVEL DOC\\CUSTOM\\PrinterSet_3.9.7.exe", "silent_args": "", "installer_type": "exe" },
+      { "installer": "C:\\Program Files\\CUSTOM\\PrinterSet\\CePrinterSet.exe", "silent_args": "", "installer_type": "open" },
+      { "installer": "LTP TRAVEL DOC\\CUSTOM\\DIW_KPM180H_221.exe", "silent_args": "", "installer_type": "exe" }
+    ]
+  }
+  ```
+  Cada elemento de `extra_steps` también puede llevar una clave `version`
+  puramente informativa (no la usa el motor de instalación) cuando ese
+  paso instala un paquete con su propio número de versión distinto al del
+  ítem principal — útil quirúrgicamente para no perder esa referencia
+  cuando, como en CUSTOM, cada paso es en realidad una aplicación distinta.
 
 ## Carpeta de instaladores por defecto: `CM APPS\APPS`
 

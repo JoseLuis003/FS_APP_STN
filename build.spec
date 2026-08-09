@@ -11,6 +11,11 @@ a = Analysis(
         ('assets', 'assets'),  # iconos (checkmark del checkbox, etc.) empaquetados dentro del .exe
         ('scripts', 'scripts'),  # scripts de PowerShell (unión al dominio) empaquetados dentro del .exe
     ],
+    # `win32com.client` (pywin32, usado en app/shortcuts.py para crear los
+    # accesos directos de Shares) normalmente lo detecta solo PyInstaller
+    # gracias a los hooks de pyinstaller-hooks-contrib -- si el .exe
+    # generado falla al crear un acceso directo con un error de import,
+    # agregar aquí "win32com", "win32com.client" y "win32timezone".
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

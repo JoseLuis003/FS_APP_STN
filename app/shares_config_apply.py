@@ -26,6 +26,14 @@ valores de CIUDAD y HOSTNAME capturados en el panel
    HOSTNAME llegara a contener "CNT" como parte de su nombre, el reemplazo
    global del paso (a) no lo toque por accidente.
 
+Por último, si la casilla CONTINGENCIA del panel está marcada,
+`run_contingencia_script()` corre `LTP TRAVEL DOC\Contingencia.bat` — a
+diferencia de todo lo anterior, esto SÍ es un proceso externo (no una
+edición de archivo) y su ruta es relativa a la carpeta base de
+instaladores (`installers_base_path`, la misma que usa el resto del
+catálogo LTP / CSS), no a `base_dir` (que es donde vive la configuración
+de Shares en sí, típicamente `C:\LTP\AppDatCM`).
+
 Además, `apply_udf_configuration()` edita un segundo archivo,
 `LTPCMUDF.INF`, que vive dentro de la carpeta `UDF` junto al `.XRF` de
 arriba (por eso se llama después de `apply_shares_configuration()`, una
@@ -51,6 +59,7 @@ comas ni el resto de la línea.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 # Ruta donde vive la configuración de Shares en el equipo. Se puede pasar
@@ -317,3 +326,62 @@ def _apply_group_line(text: str, lniata_crt: str) -> tuple[str, bool]:
 
     lines[target_index] = match.group(1) + lniata_crt + match.group(3) + ending
     return "".join(lines), True
+
+
+# --------------------------------------------------------------------------
+# Tercera parte: CONTINGENCIA -- a diferencia de todo lo de arriba, esto no
+# edita ningún archivo de configuración: corre `Contingencia.bat` como
+# proceso externo. Por eso su ruta es relativa a `installers_base_path` (la
+# carpeta de instaladores del catálogo LTP / CSS), no a `base_dir`.
+# --------------------------------------------------------------------------
+
+# Ruta del script, relativa a `installers_base_path`.
+CONTINGENCIA_SCRIPT_REL = r"LTP TRAVEL DOC\Contingencia.bat"
+
+# Mismo criterio que `app/installer.py`: 3010 = éxito, requiere reinicio.
+_CONTINGENCIA_SUCCESS_CODES = {0, 3010}
+
+
+def run_contingencia_script(installers_base_path: str) -> str:
+    """Corre `Contingencia.bat` (ver `CONTINGENCIA_SCRIPT_REL`) dentro de la
+    carpeta de instaladores del catálogo LTP / CSS (`installers_base_path`).
+
+    A diferencia de `apply_shares_configuration()` / `apply_udf_configuration()`
+    (que editan archivos directamente y no pueden "fallar" en tiempo de
+    ejecución en el sentido de un proceso externo), esto sí lanza un proceso
+    y hay que esperar su resultado -- mismo criterio de éxito que el resto
+    del catálogo (`installer.py`: código 0 o 3010).
+
+    Devuelve un mensaje corto de éxito para mostrar en el estado de la
+    pantalla. Lanza `SharesConfigError` si el script no existe, se agota el
+    tiempo de espera, no se pudo ejecutar, o termina con un código de salida
+    que no sea de éxito -- el llamador decide cómo mostrarlo (igual que el
+    resto de errores de esta pantalla)."""
+    script_path = Path(installers_base_path) / CONTINGENCIA_SCRIPT_REL
+    if not script_path.exists():
+        raise SharesConfigError(f"No se encontró el script de Contingencia en: {script_path}")
+
+    try:
+        result = subprocess.run(
+            [str(script_path)],
+            cwd=str(script_path.parent),
+            capture_output=True,
+            text=True,
+            timeout=10 * 60,  # 10 minutos
+        )
+    except subprocess.TimeoutExpired:
+        raise SharesConfigError(f"Tiempo de espera agotado (10 min) al correr '{script_path}'.")
+    except OSError as exc:
+        raise SharesConfigError(f"No se pudo ejecutar '{script_path}': {exc}")
+
+    if result.returncode not in _CONTINGENCIA_SUCCESS_CODES:
+        detail = (result.stderr or result.stdout or "").strip()[:500]
+        msg = f"Contingencia.bat terminó con código de salida {result.returncode}"
+        if detail:
+            msg += f" -- {detail}"
+        raise SharesConfigError(msg)
+
+    detail = f"código de salida {result.returncode}"
+    if result.returncode == 3010:
+        detail += " (requiere reinicio)"
+    return f"Contingencia: {script_path} ({detail})"

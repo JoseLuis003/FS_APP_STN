@@ -1,19 +1,25 @@
 {
-  "_comment": "Catálogo de aplicaciones para la pantalla LTP / CSS (mismo formato que config/apps.json — ajusta 'installer' y 'silent_args' contra los paquetes reales antes de usar en producción). Los ítems con el mismo 'exclusive_group' se muestran juntos en una sola fila y son mutuamente excluyentes: solo se puede marcar uno a la vez.",
+  "_comment": "Catálogo de aplicaciones para la pantalla LTP / CSS (mismo formato que config/apps.json — ajusta 'installer' y 'silent_args' contra los paquetes reales antes de usar en producción). Los ítems con el mismo 'exclusive_group' se muestran juntos en una sola fila y son mutuamente excluyentes: solo se puede marcar uno a la vez. 'installer_type: open' abre el archivo (PDF, o un .exe ya instalado) sin esperar resultado. 'installer_type: python' no apunta a un archivo -- 'installer' es la clave de una función de Python empaquetada en la app (ver _PYTHON_STEP_HANDLERS en app/installer.py), para lógica que ya no vive como un script suelto en la carpeta de instaladores (ej. shares_5_0 -> app/shares_setup.py). 'installer' (tanto el principal como los de 'extra_steps') puede ser una ruta absoluta de Windows (ej. 'C:\\Program Files\\...') en vez de relativa a 'installers_base_path'. Los 'extra_steps' pueden incluir una clave informativa 'version' cuando ese paso instala un paquete con su propio número de versión distinto al del ítem principal (no la usa el motor de instalación, es solo referencia para mantenimiento).",
   "columns": [
     {
       "groups": [
         {
           "items": [
-            { "id": "epson_utility",         "label": "EPSON UTILITY",        "installer": "EpsonUtility/Setup.exe",       "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "gemalto",                "label": "GEMALTO",              "installer": "Gemalto/Setup.exe",            "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
-            { "id": "3m",                     "label": "3M",                   "installer": "3M/Setup.exe",                 "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
-            { "id": "desko",                  "label": "DESKO",                "installer": "Desko/Setup.exe",              "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
-            { "id": "epson_usb_driver",       "label": "EPSON USB DRIVER",     "installer": "EpsonUsbDriver/Setup.exe",     "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "virtual_port",           "label": "VIRTUAL PORT",         "installer": "VirtualPort/Setup.exe",        "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "bgr_ier",                "label": "BGR IER",              "installer": "BgrIer/Setup.exe",             "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "custom",                 "label": "CUSTOM",               "installer": "Custom/Setup.exe",             "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "shares_5_0",             "label": "Shares 5.0",           "installer": "Shares/Setup.exe",             "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "5.0" },
+            { "id": "epson_utility",         "label": "EPSON UTILITY",        "installer": "LTP TRAVEL DOC\\TM-L500A Utility Rev 1.06\\TM-L500A Utility Installer.msi", "silent_args": "",           "installer_type": "msi",    "default_checked": false, "enabled": true, "version": "1.06" },
+            { "id": "gemalto",                "label": "GEMALTO",              "installer": "LTP TRAVEL DOC\\GEMALTO\\Gemalto Swipe Reader SDK x64 1.3.1.3 Setup.exe", "silent_args": "/exebasicui", "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "1.3.1.3", "exclusive_group": "lector_tarjetas" },
+            { "id": "3m",                     "label": "3M",                   "installer": "LTP TRAVEL DOC\\3M Swipe Reader SDK 1.0.12 Setup.exe", "silent_args": "/exebasicui", "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "1.0.12", "exclusive_group": "lector_tarjetas" },
+            { "id": "desko",                  "label": "DESKO",                "installer": "LTP TRAVEL DOC\\01 DESKO DDS Setup\\DDSSetup.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
+            { "id": "epson_usb_driver",       "label": "EPSON USB DRIVER",     "installer": "LTP TRAVEL DOC\\TMUSB800d\\Setup.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "8.0.0.d" },
+            { "id": "virtual_port",           "label": "VIRTUAL PORT",         "installer": "LTP TRAVEL DOC\\TMVirtualPortDriver870d\\TMVirtualPortDriver870d.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "8.7.0.d" },
+            { "id": "bgr_ier",                "label": "BGR IER",              "installer": "LTP TRAVEL DOC\\BGR_IER\\IER_99179_Setup.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "9.9.179" },
+            { "id": "custom",                 "label": "CUSTOM",               "installer": "LTP TRAVEL DOC\\CUSTOM\\MANUAL.pdf", "silent_args": "",           "installer_type": "open",   "default_checked": false, "enabled": true, "version": "N/D",
+              "extra_steps": [
+                { "installer": "LTP TRAVEL DOC\\CUSTOM\\PrinterSet_3.9.7.exe", "silent_args": "", "installer_type": "exe", "version": "3.9.7" },
+                { "installer": "C:\\Program Files\\CUSTOM\\PrinterSet\\CePrinterSet.exe", "silent_args": "", "installer_type": "open" },
+                { "installer": "LTP TRAVEL DOC\\CUSTOM\\DIW_KPM180H_221.exe", "silent_args": "", "installer_type": "exe", "version": "2.21" }
+              ] },
+            { "id": "shares_5_0",             "label": "Shares 5.0",           "installer": "LTP TRAVEL DOC\\LTP Shares LTPGUI32 ApplicationCM.msi", "silent_args": "/passive", "installer_type": "msi", "default_checked": false, "enabled": true, "version": "5.0",
+              "extra_steps": [ { "installer": "ltp_shares_post_install", "silent_args": "", "installer_type": "python" } ] },
             { "id": "shares_configuracion",   "label": "Shares Configuracion", "installer": "SharesConfiguracion/apply.ps1","silent_args": "",    "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         }
@@ -23,7 +29,11 @@
       "groups": [
         {
           "items": [
-            { "id": "appshell_4_00_0030",       "label": "AppShell 4.00.0030",      "installer": "AppShell/Setup.exe",             "silent_args": "/S", "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "4.00.0030" },
+            { "id": "appshell_4_00_0030",       "label": "AppShell 4.00.0030",      "installer": "DXC_GUI_RES\\PssAppShell 4.0\\PssAppShellSetup_v40_CM_20230517_Release1.msi", "silent_args": "/passive", "installer_type": "msi",    "default_checked": false, "enabled": true, "version": "4.00.0030",
+              "extra_steps": [
+                { "installer": "DXC_GUI_RES\\PssAppShell 4.0\\vcredist.x86_14.40.33816.0.exe", "silent_args": "/passive", "installer_type": "exe", "version": "14.40.33816.0" },
+                { "installer": "DXC_GUI_RES\\PssAppShell 4.0\\CSS permision.bat", "silent_args": "", "installer_type": "script" }
+              ] },
             { "id": "appshell_configuracion",   "label": "AppShell Configuracion",  "installer": "AppShellConfiguracion/apply.ps1","silent_args": "",   "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         }

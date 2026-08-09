@@ -24,6 +24,20 @@ QMainWindow {{
     background-color: #eceae7;
 }}
 
+/* Mismo problema que el QScrollArea de más abajo: un QLabel normal (sin
+   `objectName`, como los textos de introducción o las etiquetas que arma
+   QFormLayout — "Nombre del equipo:", "Usuario:", etc.) no tiene color de
+   letra propio en esta hoja de estilos, así que toma el de la paleta del
+   sistema. En Windows con tema oscuro esa paleta pone el texto en blanco,
+   y como el fondo de la ventana es claro (#eceae7), el texto queda casi
+   invisible. Los QLabel con `objectName` propio (`#statusBar`,
+   `#activePathLabel`) ya tienen su color explícito más abajo y ese
+   selector, al ser más específico, sigue ganando sobre esta regla general.
+*/
+QLabel {{
+    color: #202020;
+}}
+
 /* Sin esto, un QScrollArea (usado en la pantalla LTP / CSS para que
    ATRAS/INSTALAR no se empujen fuera de la vista) pinta su propio fondo
    con la paleta del sistema en vez del fondo claro de la app — en Windows

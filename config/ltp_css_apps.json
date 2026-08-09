@@ -1,0 +1,33 @@
+{
+  "_comment": "Catálogo de aplicaciones para la pantalla LTP / CSS (mismo formato que config/apps.json — ajusta 'installer' y 'silent_args' contra los paquetes reales antes de usar en producción). Los ítems con el mismo 'exclusive_group' se muestran juntos en una sola fila y son mutuamente excluyentes: solo se puede marcar uno a la vez.",
+  "columns": [
+    {
+      "groups": [
+        {
+          "items": [
+            { "id": "epson_utility",         "label": "EPSON UTILITY",        "installer": "EpsonUtility/Setup.exe",       "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "gemalto",                "label": "GEMALTO",              "installer": "Gemalto/Setup.exe",            "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
+            { "id": "3m",                     "label": "3M",                   "installer": "3M/Setup.exe",                 "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
+            { "id": "desko",                  "label": "DESKO",                "installer": "Desko/Setup.exe",              "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D", "exclusive_group": "lector_tarjetas" },
+            { "id": "epson_usb_driver",       "label": "EPSON USB DRIVER",     "installer": "EpsonUsbDriver/Setup.exe",     "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "virtual_port",           "label": "VIRTUAL PORT",         "installer": "VirtualPort/Setup.exe",        "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "bgr_ier",                "label": "BGR IER",              "installer": "BgrIer/Setup.exe",             "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "custom",                 "label": "CUSTOM",               "installer": "Custom/Setup.exe",             "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "shares_5_0",             "label": "Shares 5.0",           "installer": "Shares/Setup.exe",             "silent_args": "/S",  "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "5.0" },
+            { "id": "shares_configuracion",   "label": "Shares Configuracion", "installer": "SharesConfiguracion/apply.ps1","silent_args": "",    "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+          ]
+        }
+      ]
+    },
+    {
+      "groups": [
+        {
+          "items": [
+            { "id": "appshell_4_00_0030",       "label": "AppShell 4.00.0030",      "installer": "AppShell/Setup.exe",             "silent_args": "/S", "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "4.00.0030" },
+            { "id": "appshell_configuracion",   "label": "AppShell Configuracion",  "installer": "AppShellConfiguracion/apply.ps1","silent_args": "",   "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+          ]
+        }
+      ]
+    }
+  ]
+}

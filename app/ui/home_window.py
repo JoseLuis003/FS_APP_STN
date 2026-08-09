@@ -1,11 +1,11 @@
 """Pantalla de bienvenida ("portada") de FS APP PORTABLE.
 
 Muestra 3 botones de navegación (APPS, LTP / CSS, DOMINIO) en una barra
-superior, y debajo la imagen de campaña completa (sin recortarla). Por
-ahora solo APPS abre una pantalla real (el catálogo de instalación que ya
-existía, ver `app/ui/main_window.py`); los otros dos todavía no tienen una
-sección definida, así que muestran un aviso de "próximamente" al
-presionarlos.
+superior, y debajo la imagen de campaña completa (sin recortarla). APPS
+abre el catálogo de instalación original (`app/ui/main_window.py`) y
+LTP / CSS abre su propio catálogo (`app/ui/ltp_css_window.py`); DOMINIO
+todavía no tiene una sección definida, así que muestra un aviso de
+"próximamente" al presionarlo.
 """
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import ASSETS_DIR
+from app.ui.ltp_css_window import LtpCssWindow
 from app.ui.main_window import MainWindow
 
 _BAR_COLOR = "#0a1f3d"  # mismo tono oscuro/azul de la imagen de campaña
@@ -114,9 +115,11 @@ class HomeWindow(QMainWindow):
             # de la pantalla.
             self.setFixedSize(FIXED_WIDTH, FIXED_HEIGHT)
 
-        # Se crea la primera vez que se presiona APPS, y se reutiliza si se
-        # vuelve a presionar (no hace falta reconstruir el catálogo).
+        # Se crean la primera vez que se presiona cada botón, y se
+        # reutilizan si se vuelve a entrar (no hace falta reconstruir el
+        # catálogo cada vez).
         self.main_window: MainWindow | None = None
+        self.ltp_css_window: LtpCssWindow | None = None
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -144,7 +147,7 @@ class HomeWindow(QMainWindow):
             top_bar_layout.addWidget(btn, 1)
 
         apps_btn.clicked.connect(self._on_apps)
-        ltp_btn.clicked.connect(lambda: self._show_placeholder("LTP / CSS"))
+        ltp_btn.clicked.connect(self._on_ltp_css)
         dominio_btn.clicked.connect(lambda: self._show_placeholder("DOMINIO"))
 
         if SIZE_ADJUST_MODE:
@@ -182,6 +185,19 @@ class HomeWindow(QMainWindow):
         self.show()
         if self.main_window is not None:
             self.main_window.hide()
+
+    def _on_ltp_css(self) -> None:
+        if self.ltp_css_window is None:
+            self.ltp_css_window = LtpCssWindow(on_back=self._on_back_from_ltp_css)
+        self.ltp_css_window.show()
+        self.hide()
+
+    def _on_back_from_ltp_css(self) -> None:
+        """Se conecta al botón ATRAS de la pantalla LTP / CSS para volver a
+        mostrar esta portada."""
+        self.show()
+        if self.ltp_css_window is not None:
+            self.ltp_css_window.hide()
 
     def _show_placeholder(self, section_name: str) -> None:
         QMessageBox.information(

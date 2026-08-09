@@ -48,6 +48,7 @@ from app.config import (
 from app.installer import InstallManager
 from app.installer_detect import detect_silent_args
 from app.report import generate_report
+from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.styles import build_stylesheet
 
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
@@ -631,19 +632,7 @@ class MainWindow(QMainWindow):
         root.addLayout(self._build_controls())
 
     def _build_column(self, column) -> QVBoxLayout:
-        col_layout = QVBoxLayout()
-        col_layout.setSpacing(2)
-        for g_index, group in enumerate(column.groups):
-            if g_index > 0:
-                col_layout.addSpacing(20)
-            for item in group.items:
-                checkbox = QCheckBox(item.label)
-                checkbox.setChecked(item.default_checked)
-                checkbox.setEnabled(item.enabled)
-                col_layout.addWidget(checkbox)
-                self.checkboxes[item.id] = (item, checkbox)
-        col_layout.addStretch(1)
-        return col_layout
+        return build_checkbox_column(column, self.checkboxes)
 
     def _build_controls(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -854,3 +843,5 @@ class MainWindow(QMainWindow):
         self.installar_btn.setEnabled(enabled)
         for _item, checkbox in self.checkboxes.values():
             checkbox.setEnabled(enabled and _item.enabled)
+        if enabled:
+            reapply_exclusive_constraints(self.checkboxes)

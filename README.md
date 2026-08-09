@@ -2,33 +2,34 @@
 
 Reemplazo en Python del instalador desatendido que originalmente estaba en
 VB.NET. La app abre en una **portada** ("FS APP PORTABLE") con 3 botones —
-APPS, LTP / CSS y DOMINIO — y por ahora solo APPS lleva a una pantalla real:
-el catálogo de aplicaciones en checkboxes agrupados por columnas, que
-permite seleccionar varias, instalarlas de forma silenciosa una por una, y
-va quitando de la lista cada ítem que termina de instalarse correctamente
-(igual que la app original). Los otros dos botones (LTP / CSS y DOMINIO)
-todavía no tienen una sección definida — muestran un aviso de "próximamente"
-al presionarlos.
+APPS, LTP / CSS y DOMINIO. APPS y LTP / CSS llevan cada uno a su propio
+catálogo de aplicaciones en checkboxes, que permite seleccionar varias,
+instalarlas de forma silenciosa una por una, y va quitando de la lista cada
+ítem que termina de instalarse correctamente (igual que la app original).
+DOMINIO todavía no tiene una sección definida — muestra un aviso de
+"próximamente" al presionarlo.
 
 ## Portada (`app/ui/home_window.py`)
 
 - Barra superior con los 3 botones de navegación (APPS, LTP / CSS,
   DOMINIO), y debajo la imagen de campaña completa, sin recortar.
-- **APPS**: abre el catálogo de instalación (ver sección siguiente). La
-  ventana de instalación se crea una sola vez y se reutiliza si se vuelve a
-  entrar.
-- **LTP / CSS** y **DOMINIO**: muestran un mensaje de "próximamente" — para
-  activarlos hay que definir primero qué pantalla o función debe abrir cada
-  uno.
+- **APPS**: abre el catálogo de instalación original (ver sección
+  "Catálogo de instalación (botón APPS)"). Usa `config/apps.json`.
+- **LTP / CSS**: abre un segundo catálogo de instalación, independiente del
+  de APPS (ver sección "Catálogo LTP / CSS"). Usa `config/ltp_css_apps.json`.
+- Ambas ventanas se crean una sola vez y se reutilizan si se vuelve a
+  entrar (no se reconstruye el catálogo cada vez).
+- **DOMINIO**: muestra un mensaje de "próximamente" — para activarlo hay
+  que definir primero qué pantalla o función debe abrir.
 - La imagen de fondo (`assets/home_background.png`) es material de
   campaña interna de Copa Airlines; si se necesita cambiarla, basta con
   reemplazar ese archivo (se muestra completa, sin recortar, con barras de
   color sólido a los lados si la proporción no coincide exactamente con la
   ventana).
-- La ventana de la portada abre con tamaño fijo (740×580 píxeles) para que
+- La ventana de la portada abre con tamaño fijo (515×580 píxeles) para que
   nunca se estire a ocupar toda la pantalla, sin importar la resolución del
-  equipo. Para cambiarlo, edita los dos números en
-  `HomeWindow.__init__` (`self.setFixedSize(740, 580)`).
+  equipo. Para cambiarlo, edita `FIXED_WIDTH`/`FIXED_HEIGHT` en
+  `app/ui/home_window.py`.
 
 ## Catálogo de instalación (botón APPS)
 
@@ -112,6 +113,61 @@ sume al catálogo una aplicación que todavía no está en la lista:
 La aplicación nueva aparece de inmediato en la lista principal al cerrar
 AJUSTES, sin reiniciar la app ni tocar `apps.json` a mano.
 
+## Catálogo LTP / CSS (`app/ui/ltp_css_window.py`)
+
+Segunda pantalla de catálogo, independiente de APPS, a la que se entra
+desde la portada con el botón LTP / CSS. Usa su propio archivo de catálogo
+(`config/ltp_css_apps.json`, mismo formato que `apps.json`) y por ahora
+solo tiene los botones ATRAS e INSTALAR (sin NUEVO/UNSELECT/MTO/AJUSTES —
+se pueden agregar más adelante si hace falta). Reutiliza el mismo motor de
+instalación y la misma carpeta base (`installers_base_path`, ver "Carpeta
+de instaladores por defecto" más abajo) que APPS, así que los instaladores
+de LTP / CSS también van dentro de `CM APPS\APPS`. El reporte que genera al
+terminar se guarda por separado (`reporte_LTP_CSS_...`) para no mezclarse
+con los de APPS.
+
+**Grupos exclusivos (selección única, tipo radio button):** algunos ítems
+del catálogo pueden marcarse como mutuamente excluyentes agregándoles el
+campo `"exclusive_group"` con el mismo valor de texto — por ejemplo,
+GEMALTO / 3M / DESKO comparten `"exclusive_group": "lector_tarjetas"`
+porque son formas alternativas de leer tarjetas y no tiene sentido
+instalar más de una en el mismo equipo. Los ítems que comparten un
+`exclusive_group` se dibujan juntos en una sola fila, y al marcar uno se
+desmarcan y deshabilitan automáticamente los demás del grupo (se vuelven a
+habilitar si se desmarca). Este mecanismo vive en
+`app/ui/catalog_widgets.py` y lo puede usar cualquier catálogo (APPS
+también, si algún día lo necesita) — basta con agregar el campo
+`exclusive_group` a los ítems correspondientes en el JSON.
+
+**Panel "Shares Configuracion" (`app/ui/shares_config_panel.py`):** al
+marcar la casilla "Shares Configuracion" del catálogo aparece debajo un
+panel con tres secciones — SETTING's, DEVICES y CRT's — y desaparece si se
+vuelve a desmarcar. Dentro de SETTING's:
+
+- **HOSTNAME** y **CIUDAD** vienen marcados y con un valor precargado
+  (HOSTNAME toma el nombre real del equipo con `socket.gethostname()`;
+  CIUDAD toma las primeras 3 letras de ese mismo nombre, en mayúsculas),
+  pero el técnico puede editar ese valor libremente.
+- Los 4 campos **LNIATA** (CRT, ATB, BTP, DCP) empiezan desmarcados y
+  vacíos, y solo aceptan hasta 6 dígitos numéricos (nada de letras ni más
+  de 6 caracteres), para evitar errores de tecleo.
+- **CONTINGENCIA** es solo una casilla, sin campo asociado.
+- En todos los campos con casilla, el campo de texto solo se puede editar
+  mientras su casilla esté marcada (se deshabilita al desmarcarla, pero
+  conserva lo escrito).
+
+Las secciones DEVICES (BGR, OCR — WGE deshabilitado por ahora) y CRT's (2,
+4) por ahora son casillas simples, sin ninguna regla especial todavía.
+Esta es la segunda de varias condiciones que se están agregando "por
+partes" a la pantalla LTP / CSS (la primera fue el grupo exclusivo
+GEMALTO/3M/DESKO, arriba); las siguientes se irán sumando según se vayan
+definiendo.
+
+**Importante:** igual que en `apps.json`, los valores de `installer` y
+`silent_args` de `ltp_css_apps.json` son placeholders — hay que revisarlos
+contra los instaladores reales (EPSON, GEMALTO, 3M, DESKO, AppShell, etc.)
+antes de usar esto en producción.
+
 ## Reporte de instalación
 
 Al terminar de instalar (o intentar instalar) las aplicaciones seleccionadas,
@@ -150,19 +206,23 @@ FS_APP_STN/
 ├── build.spec               # spec de PyInstaller (onefile, sin consola)
 ├── build.bat                 # script de compilación para Windows
 ├── app/
-│   ├── config.py             # carga/guarda apps.json y settings.json
+│   ├── config.py             # carga/guarda apps.json, ltp_css_apps.json y settings.json
 │   ├── installer.py          # motor de instalación (subprocess + QThread)
 │   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   └── ui/
+│       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
 │       ├── home_window.py    # portada (FS APP PORTABLE): APPS / LTP-CSS / DOMINIO
 │       ├── main_window.py    # catálogo de instalación (botón APPS)
+│       ├── ltp_css_window.py # catálogo de instalación (botón LTP / CSS)
+│       ├── shares_config_panel.py # panel SETTING's/DEVICES/CRT's de "Shares Configuracion"
 │       └── styles.py         # hoja de estilos (QSS)
 ├── assets/
 │   ├── check.png              # ícono del checkmark de los checkboxes
 │   └── home_background.png    # imagen de campaña de la portada
 ├── config/
-│   ├── apps.json               # catálogo de aplicaciones (editable)
+│   ├── apps.json               # catálogo de APPS (editable)
+│   ├── ltp_css_apps.json        # catálogo de LTP / CSS (editable)
 │   ├── settings.json            # ruta de instaladores, modo, etc. (local, no versionado)
 │   └── settings.example.json    # plantilla de referencia (sí versionada)
 ├── logs/                     # se crea automáticamente, un log por día
@@ -303,12 +363,19 @@ hora, comando ejecutado y código de salida (0 y 3010 se consideran éxito;
 
 ## Próximos pasos sugeridos
 
-1. Confirmar los `silent_args` reales de cada instalador contra los
-   paquetes que usa Copa.
-2. Definir qué deben hacer las secciones LTP / CSS y DOMINIO de la portada
-   (por ahora solo muestran un aviso de "próximamente").
-3. Decidir si el modo de instalación debe poder ser paralelo (varias a la
+1. Confirmar los `silent_args` y rutas de instalador reales de cada
+   aplicación contra los paquetes que usa Copa, tanto en `config/apps.json`
+   como en `config/ltp_css_apps.json` (los valores de LTP / CSS son
+   placeholders puestos como referencia mientras se arma el catálogo).
+2. Seguir agregando, "por partes", las demás condiciones de la pantalla
+   LTP / CSS que todavía faltan (por ahora están implementadas la
+   selección única entre GEMALTO / 3M / DESKO y el panel de "Shares
+   Configuracion"; las secciones DEVICES y CRT's de ese panel todavía no
+   tienen ninguna regla especial).
+3. Definir qué debe hacer la sección DOMINIO de la portada (por ahora solo
+   muestra un aviso de "próximamente").
+4. Decidir si el modo de instalación debe poder ser paralelo (varias a la
    vez) en vez de secuencial — hoy corre una por una para evitar
    contención de recursos.
-4. Firmar el .exe o empaquetarlo con un certificado, si la política interna
+5. Firmar el .exe o empaquetarlo con un certificado, si la política interna
    lo exige para ejecutar en los equipos de usuarios.

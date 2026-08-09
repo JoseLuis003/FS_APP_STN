@@ -68,11 +68,16 @@ def get_windows_version() -> str:
     return platform.platform() or "No disponible"
 
 
-def generate_report(records: list[tuple[str, str, datetime.datetime]]) -> tuple[Path, Path]:
+def generate_report(
+    records: list[tuple[str, str, datetime.datetime]], section_label: str = ""
+) -> tuple[Path, Path]:
     """Genera el reporte de instalación. `records` es la lista de apps que
     se instalaron correctamente: (nombre_a_mostrar, version_a_mostrar, hora
     en que terminó). El nombre/versión ya vienen resueltos (detectados del
     propio instalador cuando fue posible, o del catálogo si no).
+    `section_label` (opcional, ej. "LTP_CSS") identifica de qué pantalla
+    viene el reporte cuando hay más de un catálogo en la app; se agrega al
+    nombre del archivo y al título para no mezclarlos con los de APPS.
     Devuelve (ruta_html, ruta_csv)."""
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -83,13 +88,14 @@ def generate_report(records: list[tuple[str, str, datetime.datetime]]) -> tuple[
     windows_version = get_windows_version()
 
     stamp = timestamp.strftime("%Y%m%d_%H%M%S")
-    base_name = f"reporte_{computer_name}_{stamp}"
+    label_part = f"{section_label}_" if section_label else ""
+    base_name = f"reporte_{label_part}{computer_name}_{stamp}"
     html_path = REPORTS_DIR / f"{base_name}.html"
     csv_path = REPORTS_DIR / f"{base_name}.csv"
 
     rows = [(name, version, ts.strftime("%Y-%m-%d %H:%M:%S")) for name, version, ts in records]
 
-    _write_html(html_path, computer_name, serial, asset_tag, windows_version, rows, timestamp)
+    _write_html(html_path, computer_name, serial, asset_tag, windows_version, rows, timestamp, section_label)
     _write_csv(csv_path, computer_name, serial, asset_tag, windows_version, rows)
 
     return html_path, csv_path
@@ -103,7 +109,9 @@ def _write_html(
     windows_version: str,
     rows: list[tuple[str, str, str]],
     timestamp: datetime.datetime,
+    section_label: str = "",
 ) -> None:
+    title_suffix = f" — {html.escape(section_label)}" if section_label else ""
     if rows:
         rows_html = "\n".join(
             f"<tr><td>{html.escape(name)}</td><td>{html.escape(version)}</td><td>{html.escape(fecha)}</td></tr>"
@@ -134,7 +142,7 @@ def _write_html(
 </style>
 </head>
 <body>
-  <h1>Reporte de instalación — FS_APP_STN</h1>
+  <h1>Reporte de instalación — FS_APP_STN{title_suffix}</h1>
   <div class="subtitle">Generado el {timestamp.strftime('%Y-%m-%d %H:%M:%S')}</div>
 
   <table class="header-info">

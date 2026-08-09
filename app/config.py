@@ -56,6 +56,7 @@ APP_ROOT = get_app_root()
 CONFIG_DIR = APP_ROOT / "config"
 LOGS_DIR = APP_ROOT / "logs"
 APPS_FILE = CONFIG_DIR / "apps.json"
+LTP_CSS_APPS_FILE = CONFIG_DIR / "ltp_css_apps.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 ASSETS_DIR = get_assets_dir()
 
@@ -70,6 +71,11 @@ class AppItem:
     default_checked: bool = False
     enabled: bool = True
     version: str = "N/D"
+    # Si no está vacío, este ítem forma parte de un grupo de selección única
+    # (como un radio button): todos los ítems con el mismo valor se dibujan
+    # juntos en una fila y solo se puede marcar uno a la vez (ver
+    # app/ui/catalog_widgets.py). Ejemplo: GEMALTO / 3M / DESKO.
+    exclusive_group: str = ""
 
     def resolved_installer_path(self, installers_base_path: str) -> Path:
         base = Path(installers_base_path)
@@ -190,8 +196,12 @@ def remove_app_item(item_id: str) -> None:
     APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def load_app_columns() -> list[AppColumn]:
-    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:
+    """Carga un catálogo de aplicaciones desde un archivo JSON con el mismo
+    formato que `config/apps.json`. Por defecto lee ese archivo (el
+    catálogo de APPS); pásale `LTP_CSS_APPS_FILE` (u otro) para cargar un
+    catálogo distinto, como el de la pantalla LTP / CSS."""
+    data = json.loads(source_file.read_text(encoding="utf-8"))
     columns: list[AppColumn] = []
     for col in data.get("columns", []):
         groups: list[AppGroup] = []
@@ -206,6 +216,7 @@ def load_app_columns() -> list[AppColumn]:
                     default_checked=it.get("default_checked", False),
                     enabled=it.get("enabled", True),
                     version=it.get("version", "N/D"),
+                    exclusive_group=it.get("exclusive_group", ""),
                 )
                 for it in grp.get("items", [])
             ]

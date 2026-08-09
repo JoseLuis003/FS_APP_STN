@@ -53,6 +53,16 @@ QLabel {{
     color: #202020;
 }}
 
+/* Mismo problema otra vez, ahora con el título de un QGroupBox: el panel
+   "Shares Configuracion" (LTP / CSS) usa QGroupBox para las secciones
+   SETTING's / DEVICES / CRT's, y ese título tampoco tenía color propio acá
+   -- en Windows con tema oscuro salía en blanco, casi invisible sobre el
+   fondo claro del panel.
+*/
+QGroupBox {{
+    color: #202020;
+}}
+
 /* Sin esto, un QScrollArea (usado en la pantalla LTP / CSS para que
    ATRAS/INSTALAR no se empujen fuera de la vista) pinta su propio fondo
    con la paleta del sistema en vez del fondo claro de la app — en Windows

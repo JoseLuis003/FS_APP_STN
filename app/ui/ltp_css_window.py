@@ -50,16 +50,16 @@ from PySide6.QtWidgets import (
 # `_update_title_with_size` / `resizeEvent`).
 _BASE_TITLE = "FS APP PORTABLE - LTP / CSS"
 
-# Tamaño de ventana "ideal" (suficiente para ver el catálogo completo sin
-# scroll en un monitor normal). Si la pantalla del técnico es más chica —
-# por ejemplo un laptop con poca resolución o con la barra de tareas
-# ocupando espacio — se recorta para que la ventana siempre entre
-# completa; el contenido que no quepa se ve haciendo scroll (ver
-# QScrollArea en `_build_ui`), en vez de que la ventana se abra más alta
-# que la pantalla y ATRAS/INSTALAR queden inalcanzables detrás de la barra
-# de tareas.
-_DEFAULT_WIDTH = 950
-_DEFAULT_HEIGHT = 780
+# Tamaño de ventana por defecto al abrir (confirmado a mano por el
+# técnico arrastrando el borde hasta que se veía bien: 583 x 632). La
+# ventana sigue siendo redimensionable con normalidad -- esto es solo el
+# tamaño INICIAL, no un límite; ver `_initial_window_size`, que además lo
+# recorta si la pantalla del técnico es más chica que eso (por ejemplo un
+# laptop con poca resolución o con la barra de tareas ocupando espacio),
+# para que la ventana siempre entre completa. El contenido que no quepa se
+# ve haciendo scroll (ver QScrollArea en `_build_ui`).
+_DEFAULT_WIDTH = 583
+_DEFAULT_HEIGHT = 632
 _SCREEN_MARGIN = 40
 
 

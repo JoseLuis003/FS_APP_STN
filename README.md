@@ -141,7 +141,7 @@ parámetro `apps_file` para esto — por defecto siguen apuntando a
 
 **Tamaño de la ventana en la barra de título:** el título de esta ventana
 incluye el ancho x alto actual en píxeles (ej. "FS APP PORTABLE - LTP / CSS
-— 950 x 780 px"), actualizado en vivo en cada `resizeEvent` — así, si la
+— 583 x 632 px"), actualizado en vivo en cada `resizeEvent` — así, si la
 ventana se abre más grande de lo esperado en el equipo de algún técnico, se
 puede ver el tamaño exacto con solo mirar la barra de título del sistema,
 sin herramientas adicionales.
@@ -156,15 +156,17 @@ rompía el resaltado azul de los checkboxes marcados que viven adentro. Si
 en algún momento aparece un fondo negro/oscuro detrás del catálogo (por
 ejemplo con Windows en modo oscuro), es esta regla la que hay que revisar.
 
-El tamaño inicial de la ventana (`_initial_window_size()`) se recorta al
-espacio disponible de la pantalla del técnico (`QScreen.availableGeometry()`,
-que ya descuenta la barra de tareas) en vez de usar siempre un tamaño fijo
-de 950×780: en monitores grandes abre a ese tamaño "ideal", pero en
-pantallas más chicas (o con escalado de Windows alto, donde 950×780
-lógicos pueden verse bastante más grandes en píxeles físicos) se ajusta
-para que la ventana entre completa y ATRAS/INSTALAR no queden inalcanzables
-detrás de la barra de tareas. El contenido que no quepa en esa altura se
-ve haciendo scroll (ver el punto anterior).
+El tamaño inicial de la ventana (`_initial_window_size()`, constantes
+`_DEFAULT_WIDTH` / `_DEFAULT_HEIGHT` = 583 x 632, confirmado a mano por el
+técnico) se recorta al espacio disponible de la pantalla
+(`QScreen.availableGeometry()`, que ya descuenta la barra de tareas) en vez
+de abrir siempre a ese tamaño fijo: en pantallas más chicas (o con escalado
+de Windows alto, donde ese tamaño lógico puede verse más grande en píxeles
+físicos) se ajusta para que la ventana entre completa y ATRAS/INSTALAR no
+queden inalcanzables detrás de la barra de tareas. Esto es solo el tamaño
+INICIAL — la ventana se puede seguir agrandando o achicando con normalidad
+arrastrando el borde, como cualquier ventana. El contenido que no quepa en
+esa altura se ve haciendo scroll (ver el punto anterior).
 
 **Grupos exclusivos (selección única, tipo radio button):** algunos ítems
 del catálogo pueden marcarse como mutuamente excluyentes agregándoles el

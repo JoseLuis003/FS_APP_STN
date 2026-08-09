@@ -1,9 +1,12 @@
 """Pantalla LTP / CSS: segundo catálogo de instalación, separado del de
 APPS (ver `app/ui/main_window.py`), con su propio archivo de catálogo
 (`config/ltp_css_apps.json`). Reutiliza el mismo motor de instalación
-(`InstallManager`) que APPS, pero con una lista de aplicaciones distinta,
-sin los botones NUEVO/UNSELECT/MTO/AJUSTES (por ahora esta pantalla solo
-necesita ATRAS e INSTALAR) y sin generar el reporte HTML/CSV al terminar
+(`InstallManager`) que APPS, y también reutiliza los diálogos de AJUSTES
+(agregar / editar versión o instalador / eliminar aplicaciones) de
+`app/ui/main_window.py`, pasándoles `LTP_CSS_APPS_FILE` en vez de
+`APPS_FILE` para que operen sobre el catálogo de esta pantalla. No tiene
+los botones NUEVO/UNSELECT/MTO (por ahora esta pantalla solo necesita
+ATRAS, AJUSTES e INSTALAR) y no genera el reporte HTML/CSV al terminar
 (no hace falta en esta pantalla).
 
 GEMALTO / 3M / DESKO son mutuamente excluyentes (solo uno se puede marcar a
@@ -27,6 +30,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -38,6 +42,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+# Título base de la ventana; se le agrega el tamaño actual (ancho x alto en
+# píxeles) al final, visible en la barra de título del sistema operativo —
+# así el técnico puede ver de un vistazo si la ventana se está abriendo más
+# grande de lo esperado, sin tener que agregar un widget aparte (ver
+# `_update_title_with_size` / `resizeEvent`).
+_BASE_TITLE = "FS APP PORTABLE - LTP / CSS"
 
 # Tamaño de ventana "ideal" (suficiente para ver el catálogo completo sin
 # scroll en un monitor normal). Si la pantalla del técnico es más chica —
@@ -61,17 +72,17 @@ def _initial_window_size() -> tuple[int, int]:
         height = min(height, max(available.height() - _SCREEN_MARGIN, 300))
     return width, height
 
-from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
+from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
 from app.installer import InstallManager
 from app.shares_config_apply import SharesConfigError, apply_shares_configuration, apply_udf_configuration
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
+from app.ui.main_window import SettingsDialog
 from app.ui.shares_config_panel import SharesConfigPanel
 
 
 class LtpCssWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
-        self.setWindowTitle("FS APP PORTABLE - LTP / CSS")
         # La hoja de estilos se aplica a nivel de QApplication en
         # `main.py` -- así también la heredan los QMessageBox de esta
         # ventana (diálogos de nivel superior aparte, que no heredan un
@@ -81,6 +92,10 @@ class LtpCssWindow(QMainWindow):
         # haciendo scroll, así que la ventana nunca se abre más alta que la
         # pantalla del técnico.
         self.resize(*_initial_window_size())
+        # El título (con el tamaño actual agregado) se fija después de
+        # `resize()` para reflejar el tamaño ya recortado desde el arranque,
+        # sin depender de que `resizeEvent` llegue a tiempo.
+        self._update_title_with_size()
 
         # Si se abrió desde la portada, este callback regresa a esa
         # pantalla; si no se indica, ATRAS simplemente cierra esta ventana.
@@ -101,6 +116,19 @@ class LtpCssWindow(QMainWindow):
         self._path_check_timer = QTimer(self)
         self._path_check_timer.timeout.connect(self._update_active_path_label)
         self._path_check_timer.start(3000)
+
+    def _update_title_with_size(self) -> None:
+        """Agrega el tamaño actual de la ventana (ancho x alto en píxeles)
+        al final del título, visible en la barra de título del sistema.
+        Se llama al abrir la ventana y en cada `resizeEvent`, así el
+        técnico puede ver de un vistazo si la ventana se abrió (o quedó,
+        tras arrastrar el borde) más grande de lo esperado para su
+        pantalla."""
+        self.setWindowTitle(f"{_BASE_TITLE}  —  {self.width()} x {self.height()} px")
+
+    def resizeEvent(self, event) -> None:
+        self._update_title_with_size()
+        super().resizeEvent(event)
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -171,6 +199,11 @@ class LtpCssWindow(QMainWindow):
         atras_btn = QPushButton("ATRAS")
         atras_btn.clicked.connect(self._on_atras)
         row.addWidget(atras_btn)
+
+        ajustes_btn = QPushButton("AJUSTES")
+        ajustes_btn.clicked.connect(self._on_ajustes)
+        row.addWidget(ajustes_btn)
+
         row.addStretch(1)
 
         installar_col = QVBoxLayout()
@@ -213,6 +246,41 @@ class LtpCssWindow(QMainWindow):
             self._on_back()
         else:
             self.close()
+
+    def _on_ajustes(self) -> None:
+        """Reutiliza el mismo diálogo AJUSTES de la pantalla APPS
+        (`app/ui/main_window.SettingsDialog`), pasándole `LTP_CSS_APPS_FILE`
+        para que "Editar versiones..." y "Agregar aplicación..." operen
+        sobre `config/ltp_css_apps.json` en vez de `config/apps.json`. La
+        carpeta base de instaladores es la misma para ambas pantallas."""
+        items = [item for item, _checkbox in self.checkboxes.values()]
+        dialog = SettingsDialog(self.settings, items, len(self.columns), apps_file=LTP_CSS_APPS_FILE, parent=self)
+        accepted = dialog.exec() == QDialog.Accepted
+        if accepted:
+            self.settings = dialog.result_settings()
+            save_settings(self.settings)
+            self.status_label.setText("Ajustes guardados.")
+        if dialog.catalog_changed:
+            self._reload_catalog()
+            if not accepted:
+                self.status_label.setText("Catálogo actualizado.")
+        self._update_active_path_label()
+
+    def _reload_catalog(self) -> None:
+        """Vuelve a leer `config/ltp_css_apps.json` y reconstruye la lista
+        de checkboxes (usado después de agregar/editar/eliminar una
+        aplicación desde AJUSTES), preservando la selección actual de los
+        ítems que siguen existiendo. Igual que en APPS (ver
+        `MainWindow._reload_catalog`)."""
+        checked_ids = {
+            item_id for item_id, (_item, checkbox) in self.checkboxes.items() if checkbox.isChecked()
+        }
+        self.checkboxes = {}
+        self.columns = load_app_columns(LTP_CSS_APPS_FILE)
+        self._build_ui()
+        for item_id, (_item, checkbox) in self.checkboxes.items():
+            if item_id in checked_ids:
+                checkbox.setChecked(True)
 
     def _on_installar(self) -> None:
         selected: list[AppItem] = [

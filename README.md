@@ -117,13 +117,34 @@ AJUSTES, sin reiniciar la app ni tocar `apps.json` a mano.
 
 Segunda pantalla de catálogo, independiente de APPS, a la que se entra
 desde la portada con el botón LTP / CSS. Usa su propio archivo de catálogo
-(`config/ltp_css_apps.json`, mismo formato que `apps.json`) y por ahora
-solo tiene los botones ATRAS e INSTALAR (sin NUEVO/UNSELECT/MTO/AJUSTES —
-se pueden agregar más adelante si hace falta). Reutiliza el mismo motor de
-instalación y la misma carpeta base (`installers_base_path`, ver "Carpeta
-de instaladores por defecto" más abajo) que APPS, así que los instaladores
-de LTP / CSS también van dentro de `CM APPS\APPS`. A diferencia de APPS,
-esta pantalla no genera reporte HTML/CSV al terminar — no hace falta aquí.
+(`config/ltp_css_apps.json`, mismo formato que `apps.json`) y tiene los
+botones ATRAS, AJUSTES e INSTALAR (sin NUEVO/UNSELECT/MTO — no hacen falta
+en esta pantalla). Reutiliza el mismo motor de instalación y la misma
+carpeta base (`installers_base_path`, ver "Carpeta de instaladores por
+defecto" más abajo) que APPS, así que los instaladores de LTP / CSS también
+van dentro de `CM APPS\APPS`. A diferencia de APPS, esta pantalla no genera
+reporte HTML/CSV al terminar — no hace falta aquí.
+
+**AJUSTES** reutiliza exactamente el mismo diálogo que APPS
+(`app.ui.main_window.SettingsDialog`, con "Editar versiones de las
+aplicaciones..." y "Agregar aplicación..." — ver las dos secciones de
+arriba, "Editar, actualizar o eliminar..." y "Agregar una aplicación
+nueva..."), pero pasándole `LTP_CSS_APPS_FILE` en vez de `APPS_FILE`: todo
+lo que se agregue, edite o elimine desde AJUSTES en esta pantalla queda en
+`config/ltp_css_apps.json`, sin tocar `config/apps.json` de APPS (son
+catálogos completamente independientes). La carpeta base de instaladores
+(`installers_base_path`) sí es compartida entre ambas pantallas. Las
+funciones de `app/config.py` que escriben el catálogo (`add_app_item`,
+`update_app_installer`, `remove_app_item`, `save_app_versions`) aceptan un
+parámetro `apps_file` para esto — por defecto siguen apuntando a
+`APPS_FILE`, así que el comportamiento de APPS no cambió.
+
+**Tamaño de la ventana en la barra de título:** el título de esta ventana
+incluye el ancho x alto actual en píxeles (ej. "FS APP PORTABLE - LTP / CSS
+— 950 x 780 px"), actualizado en vivo en cada `resizeEvent` — así, si la
+ventana se abre más grande de lo esperado en el equipo de algún técnico, se
+puede ver el tamaño exacto con solo mirar la barra de título del sistema,
+sin herramientas adicionales.
 
 El catálogo y el panel de "Shares Configuracion" van dentro de un área con
 scroll: ATRAS e INSTALAR quedan siempre fijos y completos abajo, sin

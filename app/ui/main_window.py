@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import (
+    APPS_FILE,
     AppItem,
     Settings,
     add_app_item,
@@ -89,14 +90,26 @@ class CatalogEditorDialog(QDialog):
       ("Eliminar").
     Actualizar y Eliminar aplican de inmediato (son operaciones de archivo,
     no se pueden "deshacer" con Cancelar); la columna Versión solo se guarda
-    al presionar Guardar."""
+    al presionar Guardar.
 
-    def __init__(self, items: list[AppItem], installers_base_path: str, parent=None):
+    `apps_file` indica sobre qué catálogo JSON operar: por defecto
+    `config/apps.json` (pantalla APPS), pero la pantalla LTP / CSS reutiliza
+    este mismo diálogo pasándole `LTP_CSS_APPS_FILE` para editar
+    `config/ltp_css_apps.json` en su lugar."""
+
+    def __init__(
+        self,
+        items: list[AppItem],
+        installers_base_path: str,
+        apps_file: Path = APPS_FILE,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Editar aplicaciones del catálogo")
         self.setMinimumSize(720, 480)
         self.items = list(items)
         self.installers_base_path = installers_base_path
+        self.apps_file = apps_file
         # True si Actualizar instalador o Eliminar se usaron (afecta el
         # catálogo aunque se presione Cancelar, porque ya se escribió en
         # disco) -- MainWindow usa esto para saber si debe recargar la lista.
@@ -211,7 +224,7 @@ class CatalogEditorDialog(QDialog):
         new_version = (new_version.strip() or "N/D") if ok else item.version
 
         try:
-            update_app_installer(item.id, installer=new_relative, version=new_version)
+            update_app_installer(item.id, installer=new_relative, version=new_version, apps_file=self.apps_file)
         except Exception as exc:
             QMessageBox.critical(self, "Error al guardar", f"No se pudo actualizar apps.json:\n\n{exc}")
             return
@@ -235,7 +248,7 @@ class CatalogEditorDialog(QDialog):
             return
 
         try:
-            remove_app_item(item.id)
+            remove_app_item(item.id, apps_file=self.apps_file)
         except Exception as exc:
             QMessageBox.critical(self, "Error al eliminar", f"No se pudo actualizar apps.json:\n\n{exc}")
             return
@@ -269,7 +282,7 @@ class CatalogEditorDialog(QDialog):
 
         if updates:
             try:
-                save_app_versions(updates)
+                save_app_versions(updates, apps_file=self.apps_file)
             except Exception as exc:
                 QMessageBox.critical(self, "Error al guardar", f"No se pudo guardar apps.json:\n\n{exc}")
                 return
@@ -289,7 +302,11 @@ class AddAppDialog(QDialog):
     """Diálogo 'Agregar aplicación': permite sumar al catálogo una aplicación
     que todavía no está en la lista, pidiendo el instalador y sugiriendo (sin
     garantizarlo) el switch de instalación silenciosa según el tipo de
-    archivo detectado (ver `app/installer_detect.py`)."""
+    archivo detectado (ver `app/installer_detect.py`).
+
+    `apps_file` indica en qué catálogo JSON se agrega el ítem nuevo: por
+    defecto `config/apps.json` (pantalla APPS); la pantalla LTP / CSS
+    reutiliza este diálogo pasándole `LTP_CSS_APPS_FILE`."""
 
     _EXTENSION_TYPES = {
         ".exe": "exe",
@@ -299,12 +316,20 @@ class AddAppDialog(QDialog):
         ".cmd": "script",
     }
 
-    def __init__(self, installers_base_path: str, column_count: int, existing_ids: set[str], parent=None):
+    def __init__(
+        self,
+        installers_base_path: str,
+        column_count: int,
+        existing_ids: set[str],
+        apps_file: Path = APPS_FILE,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Agregar aplicación")
         self.setMinimumWidth(480)
         self.installers_base_path = installers_base_path
         self.existing_ids = existing_ids
+        self.apps_file = apps_file
         self._installer_path = ""
         self._installer_type = ""
 
@@ -452,7 +477,7 @@ class AddAppDialog(QDialog):
         }
 
         try:
-            add_app_item(self.column_combo.currentData(), item)
+            add_app_item(self.column_combo.currentData(), item, apps_file=self.apps_file)
         except Exception as exc:
             QMessageBox.critical(self, "Error al guardar", f"No se pudo actualizar apps.json:\n\n{exc}")
             return
@@ -461,15 +486,31 @@ class AddAppDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
-    """Diálogo 'AJUSTES': ruta base de instaladores, modo de ejecución, etc."""
+    """Diálogo 'AJUSTES': ruta base de instaladores, modo de ejecución, etc.
 
-    def __init__(self, settings: Settings, items: list[AppItem], column_count: int, parent=None):
+    `apps_file` indica sobre qué catálogo JSON operan "Editar versiones..."
+    y "Agregar aplicación...": por defecto `config/apps.json` (pantalla
+    APPS); la pantalla LTP / CSS reutiliza este mismo diálogo pasándole
+    `LTP_CSS_APPS_FILE` para que ambos botones editen
+    `config/ltp_css_apps.json` en su lugar. La carpeta base de instaladores
+    (`installers_base_path`) es compartida entre ambas pantallas -- no hay
+    nada que parametrizar ahí."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        items: list[AppItem],
+        column_count: int,
+        apps_file: Path = APPS_FILE,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Ajustes")
         self.setMinimumWidth(420)
         self.settings = settings
         self.items = items
         self.column_count = column_count
+        self.apps_file = apps_file
         self.catalog_changed = False
 
         self.base_path_edit = QLineEdit(settings.installers_base_path)
@@ -519,7 +560,7 @@ class SettingsDialog(QDialog):
 
     def _on_edit_versions(self) -> None:
         base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
-        dialog = CatalogEditorDialog(self.items, base_path, self)
+        dialog = CatalogEditorDialog(self.items, base_path, apps_file=self.apps_file, parent=self)
         dialog.exec()
         if dialog.catalog_changed:
             self.catalog_changed = True
@@ -527,7 +568,7 @@ class SettingsDialog(QDialog):
     def _on_add_app(self) -> None:
         base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
         existing_ids = {item.id for item in self.items}
-        dialog = AddAppDialog(base_path, self.column_count, existing_ids, self)
+        dialog = AddAppDialog(base_path, self.column_count, existing_ids, apps_file=self.apps_file, parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.catalog_changed = True
             QMessageBox.information(
@@ -722,7 +763,7 @@ class MainWindow(QMainWindow):
 
     def _on_ajustes(self) -> None:
         items = [item for item, _checkbox in self.checkboxes.values()]
-        dialog = SettingsDialog(self.settings, items, len(self.columns), self)
+        dialog = SettingsDialog(self.settings, items, len(self.columns), apps_file=APPS_FILE, parent=self)
         accepted = dialog.exec() == QDialog.Accepted
         if accepted:
             self.settings = dialog.result_settings()

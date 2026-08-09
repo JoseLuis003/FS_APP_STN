@@ -136,19 +136,21 @@ def save_settings(settings: Settings) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def save_app_versions(updates: dict[str, str]) -> None:
+def save_app_versions(updates: dict[str, str], apps_file: Path = APPS_FILE) -> None:
     """Actualiza únicamente el campo `version` de los ítems indicados en
-    `updates` ({item_id: nueva_version}) dentro de `config/apps.json`,
-    dejando todo lo demás (instalador, argumentos, grupos, etc.) intacto."""
+    `updates` ({item_id: nueva_version}) dentro de `apps_file` (por defecto
+    `config/apps.json`; pásale `LTP_CSS_APPS_FILE` para el catálogo de
+    LTP / CSS), dejando todo lo demás (instalador, argumentos, grupos, etc.)
+    intacto."""
     if not updates:
         return
-    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+    data = json.loads(apps_file.read_text(encoding="utf-8"))
     for col in data.get("columns", []):
         for grp in col.get("groups", []):
             for it in grp.get("items", []):
                 if it.get("id") in updates:
                     it["version"] = updates[it["id"]]
-    APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    apps_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def slugify_id(label: str, existing_ids: set[str]) -> str:
@@ -168,11 +170,12 @@ def slugify_id(label: str, existing_ids: set[str]) -> str:
     return candidate
 
 
-def add_app_item(column_index: int, item: dict[str, Any]) -> None:
-    """Agrega un ítem nuevo a `config/apps.json`, dentro del primer grupo de
-    la columna indicada (0, 1 o 2). Si la columna no tiene ningún grupo
-    todavía, crea uno. No toca ningún otro ítem existente."""
-    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+def add_app_item(column_index: int, item: dict[str, Any], apps_file: Path = APPS_FILE) -> None:
+    """Agrega un ítem nuevo a `apps_file` (por defecto `config/apps.json`;
+    pásale `LTP_CSS_APPS_FILE` para el catálogo de LTP / CSS), dentro del
+    primer grupo de la columna indicada (0, 1 o 2). Si la columna no tiene
+    ningún grupo todavía, crea uno. No toca ningún otro ítem existente."""
+    data = json.loads(apps_file.read_text(encoding="utf-8"))
     columns = data.setdefault("columns", [])
     while len(columns) <= column_index:
         columns.append({"groups": []})
@@ -180,14 +183,21 @@ def add_app_item(column_index: int, item: dict[str, Any]) -> None:
     if not groups:
         groups.append({"items": []})
     groups[0].setdefault("items", []).append(item)
-    APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    apps_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def update_app_installer(item_id: str, installer: str | None = None, version: str | None = None) -> None:
+def update_app_installer(
+    item_id: str,
+    installer: str | None = None,
+    version: str | None = None,
+    apps_file: Path = APPS_FILE,
+) -> None:
     """Actualiza el campo `installer` y/o `version` de un ítem que YA existe
-    en `config/apps.json` (usado al reemplazar el instalador de una app del
-    catálogo por una versión nueva). No toca ningún otro campo ni ítem."""
-    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+    en `apps_file` (por defecto `config/apps.json`; pásale
+    `LTP_CSS_APPS_FILE` para el catálogo de LTP / CSS) — usado al reemplazar
+    el instalador de una app del catálogo por una versión nueva. No toca
+    ningún otro campo ni ítem."""
+    data = json.loads(apps_file.read_text(encoding="utf-8"))
     for col in data.get("columns", []):
         for grp in col.get("groups", []):
             for it in grp.get("items", []):
@@ -196,18 +206,20 @@ def update_app_installer(item_id: str, installer: str | None = None, version: st
                         it["installer"] = installer
                     if version is not None:
                         it["version"] = version
-    APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    apps_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def remove_app_item(item_id: str) -> None:
-    """Elimina un ítem del catálogo (`config/apps.json`) por su id. Esta
-    función solo toca el JSON — borrar la carpeta del instalador en disco
-    (si corresponde) es responsabilidad de quien la llama."""
-    data = json.loads(APPS_FILE.read_text(encoding="utf-8"))
+def remove_app_item(item_id: str, apps_file: Path = APPS_FILE) -> None:
+    """Elimina un ítem del catálogo (`apps_file`, por defecto
+    `config/apps.json`; pásale `LTP_CSS_APPS_FILE` para el catálogo de
+    LTP / CSS) por su id. Esta función solo toca el JSON — borrar la
+    carpeta del instalador en disco (si corresponde) es responsabilidad de
+    quien la llama."""
+    data = json.loads(apps_file.read_text(encoding="utf-8"))
     for col in data.get("columns", []):
         for grp in col.get("groups", []):
             grp["items"] = [it for it in grp.get("items", []) if it.get("id") != item_id]
-    APPS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    apps_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:

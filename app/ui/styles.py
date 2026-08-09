@@ -24,6 +24,26 @@ QMainWindow {{
     background-color: #eceae7;
 }}
 
+/* Sin esto, un QScrollArea (usado en la pantalla LTP / CSS para que
+   ATRAS/INSTALAR no se empujen fuera de la vista) pinta su propio fondo
+   con la paleta del sistema en vez del fondo claro de la app — en Windows
+   con tema oscuro eso sale negro, y el texto oscuro de los checkboxes se
+   vuelve casi invisible encima. Puesto acá (en la hoja de estilos global)
+   y no como stylesheet local del widget, para que no rompa el cascadeo
+   de QSS de los checkboxes que viven adentro (ver bug corregido: marcar
+   un checkbox dentro del área con scroll perdía el resaltado azul de
+   ":checked" si el fondo se forzaba con un stylesheet aparte). El
+   selector `QScrollArea > QWidget > QWidget` alcanza tanto el viewport
+   interno como el widget de contenido.
+*/
+QScrollArea {{
+    background-color: #eceae7;
+    border: none;
+}}
+QScrollArea > QWidget > QWidget {{
+    background-color: #eceae7;
+}}
+
 QCheckBox {{
     padding: 5px 8px;
     border: 1px solid transparent;

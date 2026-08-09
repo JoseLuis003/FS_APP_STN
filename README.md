@@ -128,7 +128,12 @@ esta pantalla no genera reporte HTML/CSV al terminar — no hace falta aquí.
 El catálogo y el panel de "Shares Configuracion" van dentro de un área con
 scroll: ATRAS e INSTALAR quedan siempre fijos y completos abajo, sin
 importar cuánto contenido haya arriba ni qué tan chica sea la pantalla del
-técnico.
+técnico. El fondo de esa área con scroll se define en
+`app/ui/styles.py` (reglas `QScrollArea` / `QScrollArea > QWidget >
+QWidget`), no con un stylesheet local en `ltp_css_window.py` — ponerlo ahí
+rompía el resaltado azul de los checkboxes marcados que viven adentro. Si
+en algún momento aparece un fondo negro/oscuro detrás del catálogo (por
+ejemplo con Windows en modo oscuro), es esta regla la que hay que revisar.
 
 **Grupos exclusivos (selección única, tipo radio button):** algunos ítems
 del catálogo pueden marcarse como mutuamente excluyentes agregándoles el

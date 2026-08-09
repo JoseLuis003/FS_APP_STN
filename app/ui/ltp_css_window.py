@@ -114,6 +114,11 @@ class LtpCssWindow(QMainWindow):
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setWidget(scroll_content)
+        # El fondo del QScrollArea (y de su viewport) se define en la hoja
+        # de estilos global (`app/ui/styles.py`) y no acá con un
+        # stylesheet local — ponerlo acá rompía el resaltado azul de los
+        # checkboxes marcados que viven adentro (ver comentario en
+        # styles.py para el detalle del bug).
         root.addWidget(scroll_area, 1)
 
         status_row = QHBoxLayout()

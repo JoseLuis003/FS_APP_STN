@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -137,8 +138,10 @@ class HomeWindow(QMainWindow):
         for btn in (apps_btn, ltp_btn, dominio_btn):
             btn.setObjectName("homeMenuButton")
             btn.setMinimumSize(120, 52)
-            top_bar_layout.addWidget(btn)
-        top_bar_layout.addStretch(1)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            # stretch=1 en cada botón: se reparten el ancho disponible en
+            # partes iguales, sin dejar un hueco vacío después del último.
+            top_bar_layout.addWidget(btn, 1)
 
         apps_btn.clicked.connect(self._on_apps)
         ltp_btn.clicked.connect(lambda: self._show_placeholder("LTP / CSS"))

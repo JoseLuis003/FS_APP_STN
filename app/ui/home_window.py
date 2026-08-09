@@ -35,10 +35,10 @@ _BAR_COLOR = "#0a1f3d"  # mismo tono oscuro/azul de la imagen de campaña
 # tengas el tamaño que te gusta, dime esos dos números y cambio esto de
 # vuelta a `False` (o directamente fijo el tamaño con `setFixedSize`) para
 # que la ventana quede compacta y no se pueda seguir estirando.
-SIZE_ADJUST_MODE = True
+SIZE_ADJUST_MODE = False
 
-# Tamaño final una vez que se decida (se usa cuando SIZE_ADJUST_MODE = False).
-FIXED_WIDTH = 740
+# Tamaño final ya decidido (515 x 580 px, confirmado en Windows).
+FIXED_WIDTH = 515
 FIXED_HEIGHT = 580
 
 _HOME_STYLESHEET = f"""

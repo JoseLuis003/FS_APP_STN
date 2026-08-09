@@ -152,11 +152,12 @@ class CatalogEditorDialog(QDialog):
             self.table.setItem(row, 1, version_cell)
 
             update_btn = QPushButton("Actualizar instalador...")
+            update_btn.setStyleSheet("font-size: 11px; padding: 6px 10px;")
             update_btn.clicked.connect(lambda checked=False, it=item: self._on_update_installer(it))
             self.table.setCellWidget(row, 2, update_btn)
 
             delete_btn = QPushButton("Eliminar")
-            delete_btn.setStyleSheet("color: #b03a2e; font-weight: 600;")
+            delete_btn.setStyleSheet("font-size: 11px; padding: 6px 10px; color: #b03a2e; font-weight: 600;")
             delete_btn.clicked.connect(lambda checked=False, it=item: self._on_delete_item(it))
             self.table.setCellWidget(row, 3, delete_btn)
 

@@ -186,6 +186,29 @@ carpeta/archivo no aparecen donde se esperan, se marca como error en la
 casilla (igual que un instalador que falla) y el resto de la cola sigue
 su curso con normalidad.
 
+Después de eso, se edita un segundo archivo dentro de la misma carpeta ya
+renombrada: `<CIUDAD>\UDF\LTPCMUDF.INF` (`apply_udf_configuration()` en el
+mismo módulo):
+
+- Si **LNIATA CRT** está marcado: la línea `GROUP=F,XXXXXX` (2 líneas
+  debajo del comentario "define the number of LNIATA as needed for Parent
+  Sessions") cambia el valor entre las comas por el valor de LNIATA CRT
+  (si está marcado pero el campo quedó vacío, se marca como error). Si no
+  está marcado, esa línea no se toca.
+- La línea `LOCATION=...` cambia su valor por **CIUDAD**, siempre.
+- Para cada sesión adicional — **ATB**, **BTP** y **DCP** — si su casilla
+  LNIATA correspondiente está marcada: la línea `<SUFIJO>=0,<SUFIJO>1,,`
+  cambia el "0" por "1", la línea `<SUFIJO>1LNIATA=XXXXXX,` cambia su
+  valor por el valor de ese campo (si está marcada pero el campo quedó
+  vacío, se marca como error), y el puerto fijo de esa sesión se corrige a
+  su valor esperado (`ATB1PORT` a `COM7`, `BTP1PORT` a `COM8`, `DCP1PORT` a
+  `COM9`) si tenía uno distinto. Si la casilla NO está marcada, ninguna de
+  esas tres líneas se toca (ni el flag, ni el LNIATA, ni el puerto).
+
+En todos los casos se reemplaza solo el valor indicado, sin quitar las
+comas ni tocar el resto de la línea, y es igual de idempotente que el
+paso del `.XRF`.
+
 **Importante:** igual que en `apps.json`, los valores de `installer` y
 `silent_args` de `ltp_css_apps.json` son placeholders — hay que revisarlos
 contra los instaladores reales (EPSON, GEMALTO, 3M, DESKO, AppShell, etc.)

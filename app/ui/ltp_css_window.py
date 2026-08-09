@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 from app.config import ASSETS_DIR, AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
 from app.installer import InstallManager
 from app.report import generate_report
-from app.shares_config_apply import SharesConfigError, apply_shares_configuration
+from app.shares_config_apply import SharesConfigError, apply_shares_configuration, apply_udf_configuration
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.shares_config_panel import SharesConfigPanel
 from app.ui.styles import build_stylesheet
@@ -214,9 +214,12 @@ class LtpCssWindow(QMainWindow):
             self._on_queue_finished()
 
     def _run_shares_configuration(self, shares_entry: tuple[AppItem, QCheckBox]) -> None:
-        """Aplica la configuración de Shares (ver `app/shares_config_apply.py`)
-        usando los valores actuales de CIUDAD y HOSTNAME del panel, y refleja
-        el resultado en la casilla igual que un ítem normal de la cola."""
+        """Aplica la configuración de Shares (ver `app/shares_config_apply.py`):
+        primero el .XRF (`apply_shares_configuration`, con CIUDAD y HOSTNAME)
+        y después el .INF de la carpeta UDF (`apply_udf_configuration`, con
+        CIUDAD y — para cada LNIATA marcado (CRT/ATB/BTP/DCP) — su valor).
+        Refleja el resultado en la casilla igual que un ítem normal de la
+        cola."""
         item, checkbox = shares_entry
         checkbox.setProperty("installing", "true")
         checkbox.style().unpolish(checkbox)
@@ -225,9 +228,29 @@ class LtpCssWindow(QMainWindow):
 
         hostname = self.shares_config_panel.hostname_edit.text()
         ciudad = self.shares_config_panel.ciudad_edit.text()
+        lniata_crt = self.shares_config_panel.lniata_edits["CRT"].text()
+        crt_enabled = self.shares_config_panel.lniata_checks["CRT"].isChecked()
+        lniata_atb = self.shares_config_panel.lniata_edits["ATB"].text()
+        atb_enabled = self.shares_config_panel.lniata_checks["ATB"].isChecked()
+        lniata_btp = self.shares_config_panel.lniata_edits["BTP"].text()
+        btp_enabled = self.shares_config_panel.lniata_checks["BTP"].isChecked()
+        lniata_dcp = self.shares_config_panel.lniata_edits["DCP"].text()
+        dcp_enabled = self.shares_config_panel.lniata_checks["DCP"].isChecked()
 
         try:
-            detail = apply_shares_configuration(hostname, ciudad)
+            detail_xrf = apply_shares_configuration(hostname, ciudad)
+            detail_udf = apply_udf_configuration(
+                ciudad,
+                lniata_crt=lniata_crt,
+                crt_enabled=crt_enabled,
+                lniata_atb=lniata_atb,
+                atb_enabled=atb_enabled,
+                lniata_btp=lniata_btp,
+                btp_enabled=btp_enabled,
+                lniata_dcp=lniata_dcp,
+                dcp_enabled=dcp_enabled,
+            )
+            detail = f"{detail_xrf} | {detail_udf}"
         except SharesConfigError as exc:
             self._results["error"] += 1
             checkbox.setProperty("installing", "false")

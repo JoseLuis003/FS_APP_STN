@@ -25,6 +25,28 @@ valores de CIUDAD y HOSTNAME capturados en el panel
    Se hace primero (a) y después (b) — y no al revés — para que, si el
    HOSTNAME llegara a contener "CNT" como parte de su nombre, el reemplazo
    global del paso (a) no lo toque por accidente.
+
+Además, `apply_udf_configuration()` edita un segundo archivo,
+`LTPCMUDF.INF`, que vive dentro de la carpeta `UDF` junto al `.XRF` de
+arriba (por eso se llama después de `apply_shares_configuration()`, una
+vez que la carpeta ya se renombró a CIUDAD):
+
+- Si LNIATA CRT está marcado: la línea `GROUP=F,XXXXXX` (2 líneas debajo
+  del comentario "define the number of LNIATA as needed for Parent
+  Sessions") cambia el valor entre comas por LNIATA CRT. Si no está
+  marcado, esa línea no se toca.
+- La línea `LOCATION=...` cambia su valor por CIUDAD, siempre.
+- Para cada sesión adicional (ATB, BTP, DCP), si su casilla LNIATA
+  correspondiente está marcada: la línea `<SUFIJO>=0,<SUFIJO>1,,` cambia
+  el "0" por "1", la línea `<SUFIJO>1LNIATA=XXXXXX,` cambia su valor por
+  el valor de ese campo LNIATA, y el puerto fijo de esa sesión
+  (`ATB1PORT`/`BTP1PORT`/`DCP1PORT`) se corrige a su valor esperado (COM7,
+  COM8 y COM9 respectivamente) si tiene uno distinto. Si la casilla NO
+  está marcada, ninguna de esas tres líneas se toca (ni el flag, ni el
+  LNIATA, ni el puerto).
+
+En todos los casos se reemplaza solo el valor indicado, sin tocar las
+comas ni el resto de la línea.
 """
 from __future__ import annotations
 
@@ -134,3 +156,164 @@ def _rename_or_reuse(old_path: Path, new_path: Path, kind: str) -> Path:
         # Ya se había aplicado esta acción antes: se reutiliza tal cual.
         return new_path
     raise SharesConfigError(f"No se encontró {kind} '{old_path}' (ni ya renombrada a '{new_path}').")
+
+
+# --------------------------------------------------------------------------
+# Segunda parte: LTPCMUDF.INF, dentro de la carpeta UDF (dentro de la
+# carpeta ya renombrada a CIUDAD por `apply_shares_configuration()`).
+# --------------------------------------------------------------------------
+
+# Comentario que marca dónde está, 2 líneas más abajo, la línea GROUP=...
+_UDF_ANCHOR_TEXT = "define the number of LNIATA as needed for Parent Sessions"
+_UDF_ANCHOR_OFFSET = 2
+
+# GROUP=F,XXXXXX -> grupo 1 = "GROUP=F,", grupo 2 = "XXXXXX" (el valor a
+# reemplazar), grupo 3 = lo que venga después (ej. una coma final), tal
+# cual, sin tocarlo.
+_GROUP_LINE_PATTERN = re.compile(r"^(GROUP=[^,\r\n]*,)([^,\r\n]*)(.*)$")
+
+# Búsquedas directas (no dependen de posición) para el resto de líneas.
+_LOCATION_PATTERN = re.compile(r"(?m)^(LOCATION=)([^,\r\n]*)")
+
+# Puerto fijo que le corresponde a cada sesión adicional — siempre debe
+# quedar en ese valor, esté o no esté marcada la casilla LNIATA de esa
+# sesión.
+_SESSION_PORTS = {
+    "ATB": "COM7",
+    "BTP": "COM8",
+    "DCP": "COM9",
+}
+
+
+def _flag_pattern(suffix: str) -> re.Pattern[str]:
+    # <SUFIJO>=0,<SUFIJO>1,, -> grupo 1 = "<SUFIJO>=", grupo 2 = "0" (el
+    # flag a cambiar por "1"), grupo 3 = lo que sigue (",<SUFIJO>1,,"),
+    # tal cual, sin tocarlo.
+    return re.compile(rf"(?m)^({re.escape(suffix)}=)([^,\r\n]*)(,.*)$")
+
+
+def _lniata_value_pattern(suffix: str) -> re.Pattern[str]:
+    return re.compile(rf"(?m)^({re.escape(suffix)}1LNIATA=)([^,\r\n]*)")
+
+
+def _port_pattern(suffix: str) -> re.Pattern[str]:
+    return re.compile(rf"(?m)^({re.escape(suffix)}1PORT=)([^,\r\n]*)")
+
+
+def apply_udf_configuration(
+    ciudad: str,
+    lniata_crt: str = "",
+    crt_enabled: bool = False,
+    lniata_atb: str = "",
+    atb_enabled: bool = False,
+    lniata_btp: str = "",
+    btp_enabled: bool = False,
+    lniata_dcp: str = "",
+    dcp_enabled: bool = False,
+    base_dir: Path = DEFAULT_BASE_DIR,
+) -> str:
+    """Edita `<base_dir>/<ciudad>/UDF/LTPCMUDF.INF` (ver el docstring del
+    módulo para el detalle de cada línea). Se asume que
+    `apply_shares_configuration()` ya corrió antes, por eso la carpeta se
+    busca directamente con el nombre de CIUDAD (no "CNT").
+
+    LNIATA CRT, ATB, BTP y DCP solo se aplican si su respectiva casilla
+    está marcada (`crt_enabled` / `atb_enabled` / `btp_enabled` /
+    `dcp_enabled`); si no está marcada, esas líneas no se tocan en
+    absoluto (quedan como estaban) — esto incluye el puerto fijo de cada
+    sesión (ATB1PORT=COM7, BTP1PORT=COM8, DCP1PORT=COM9), que solo se
+    valida/corrige cuando esa sesión está marcada.
+
+    Lanza `SharesConfigError` si el archivo no aparece donde se espera, si
+    alguna de las líneas requeridas no tiene el formato esperado, o si
+    alguno de los LNIATA está marcado pero su campo está vacío."""
+    ciudad = (ciudad or "").strip()
+    lniata_crt = (lniata_crt or "").strip()
+    lniata_atb = (lniata_atb or "").strip()
+    lniata_btp = (lniata_btp or "").strip()
+    lniata_dcp = (lniata_dcp or "").strip()
+
+    if not ciudad:
+        raise SharesConfigError("El campo CIUDAD está vacío — hace falta para ubicar la carpeta UDF.")
+
+    udf_file = Path(base_dir) / ciudad / "UDF" / "LTPCMUDF.INF"
+    if not udf_file.exists():
+        raise SharesConfigError(f"No se encontró el archivo '{udf_file}'.")
+
+    with udf_file.open("r", encoding="utf-8", errors="replace", newline="") as f:
+        text = f.read()
+
+    updated_fields: list[str] = []
+
+    if crt_enabled:
+        if not lniata_crt:
+            raise SharesConfigError("LNIATA CRT está marcado pero el campo está vacío.")
+        text, group_updated = _apply_group_line(text, lniata_crt)
+        if not group_updated:
+            raise SharesConfigError(
+                f"No se encontró la línea GROUP=... esperada {_UDF_ANCHOR_OFFSET} líneas debajo de "
+                f"\"{_UDF_ANCHOR_TEXT}\" en '{udf_file}'."
+            )
+        updated_fields.append("GROUP")
+
+    text, location_hits = _LOCATION_PATTERN.subn(lambda m: m.group(1) + ciudad, text)
+    if location_hits == 0:
+        raise SharesConfigError(f"No se encontró ninguna línea 'LOCATION=...' en '{udf_file}'.")
+    updated_fields.append("LOCATION")
+
+    sessions = [
+        ("ATB", lniata_atb, atb_enabled),
+        ("BTP", lniata_btp, btp_enabled),
+        ("DCP", lniata_dcp, dcp_enabled),
+    ]
+    for suffix, lniata_value, enabled in sessions:
+        if enabled:
+            if not lniata_value:
+                raise SharesConfigError(f"LNIATA {suffix} está marcado pero el campo está vacío.")
+            text, flag_hits = _flag_pattern(suffix).subn(lambda m: m.group(1) + "1" + m.group(3), text)
+            if flag_hits == 0:
+                raise SharesConfigError(f"No se encontró ninguna línea '{suffix}=...' en '{udf_file}'.")
+            text, lniata_hits = _lniata_value_pattern(suffix).subn(lambda m: m.group(1) + lniata_value, text)
+            if lniata_hits == 0:
+                raise SharesConfigError(f"No se encontró ninguna línea '{suffix}1LNIATA=...' en '{udf_file}'.")
+            updated_fields.append(suffix)
+            updated_fields.append(f"{suffix}1LNIATA")
+
+            port_target = _SESSION_PORTS[suffix]
+            text, port_hits = _port_pattern(suffix).subn(lambda m: m.group(1) + port_target, text)
+            if port_hits == 0:
+                raise SharesConfigError(f"No se encontró ninguna línea '{suffix}1PORT=...' en '{udf_file}'.")
+            updated_fields.append(f"{suffix}1PORT")
+
+    with udf_file.open("w", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+    return f"UDF: {udf_file} ({', '.join(updated_fields)})"
+
+
+def _apply_group_line(text: str, lniata_crt: str) -> tuple[str, bool]:
+    """Busca el comentario ancla y, `_UDF_ANCHOR_OFFSET` líneas debajo, la
+    línea GROUP=...; reemplaza el valor entre comas por `lniata_crt`, sin
+    tocar el resto de la línea (incluida su terminación \\r\\n / \\n
+    original). Devuelve `(texto_actualizado, True)` si se aplicó el
+    cambio, o `(texto_original, False)` si no se encontró la estructura
+    esperada."""
+    lines = text.splitlines(keepends=True)
+    anchor_index = next((i for i, line in enumerate(lines) if _UDF_ANCHOR_TEXT in line), None)
+    if anchor_index is None:
+        return text, False
+
+    target_index = anchor_index + _UDF_ANCHOR_OFFSET
+    if target_index >= len(lines):
+        return text, False
+
+    raw_line = lines[target_index]
+    stripped = raw_line.rstrip("\r\n")
+    ending = raw_line[len(stripped):]
+
+    match = _GROUP_LINE_PATTERN.match(stripped)
+    if match is None:
+        return text, False
+
+    lines[target_index] = match.group(1) + lniata_crt + match.group(3) + ending
+    return "".join(lines), True

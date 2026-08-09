@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -26,6 +27,19 @@ from app.config import ASSETS_DIR
 from app.ui.main_window import MainWindow
 
 _BAR_COLOR = "#0a1f3d"  # mismo tono oscuro/azul de la imagen de campaña
+
+# MODO AJUSTE DE TAMAÑO: mientras esto sea True, la ventana queda libre de
+# redimensionar (en vez de tamaño fijo) y aparece una etiqueta con el ancho
+# x alto actual en píxeles, para poder arrastrar el borde de la ventana
+# hasta el tamaño que se vea bien y anotar el número exacto. Una vez que
+# tengas el tamaño que te gusta, dime esos dos números y cambio esto de
+# vuelta a `False` (o directamente fijo el tamaño con `setFixedSize`) para
+# que la ventana quede compacta y no se pueda seguir estirando.
+SIZE_ADJUST_MODE = True
+
+# Tamaño final una vez que se decida (se usa cuando SIZE_ADJUST_MODE = False).
+FIXED_WIDTH = 740
+FIXED_HEIGHT = 580
 
 _HOME_STYLESHEET = f"""
 QWidget#homeTopBar {{
@@ -45,6 +59,14 @@ QPushButton#homeMenuButton:hover {{
 }}
 QPushButton#homeMenuButton:pressed {{
     background-color: #cfcfcf;
+}}
+QLabel#sizeDebugLabel {{
+    color: #ffe28a;
+    font-size: 12px;
+    font-weight: 700;
+    background-color: rgba(0, 0, 0, 120);
+    padding: 4px 8px;
+    border-radius: 3px;
 }}
 """
 
@@ -75,13 +97,21 @@ class HomeWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FS APP PORTABLE")
-        # Tamaño fijo (no `resize`, que solo sugiere un tamaño inicial pero
-        # deja la ventana libre de estirarse): así se garantiza que la
-        # portada siempre abra compacta, sin importar la resolución de la
-        # pantalla. Si se necesita otro tamaño, basta con cambiar estos dos
-        # números (ancho, alto en píxeles).
-        self.setFixedSize(740, 580)
         self.setStyleSheet(_HOME_STYLESHEET)
+
+        self.size_label: QLabel | None = None
+
+        if SIZE_ADJUST_MODE:
+            # Ventana redimensionable + etiqueta con el tamaño actual, para
+            # poder encontrar a ojo el tamaño ideal arrastrando el borde.
+            self.resize(FIXED_WIDTH, FIXED_HEIGHT)
+            self.setMinimumSize(300, 300)
+        else:
+            # Tamaño fijo (no `resize`, que solo sugiere un tamaño inicial
+            # pero deja la ventana libre de estirarse): así se garantiza que
+            # la portada siempre abra compacta, sin importar la resolución
+            # de la pantalla.
+            self.setFixedSize(FIXED_WIDTH, FIXED_HEIGHT)
 
         # Se crea la primera vez que se presiona APPS, y se reutiliza si se
         # vuelve a presionar (no hace falta reconstruir el catálogo).
@@ -114,11 +144,28 @@ class HomeWindow(QMainWindow):
         ltp_btn.clicked.connect(lambda: self._show_placeholder("LTP / CSS"))
         dominio_btn.clicked.connect(lambda: self._show_placeholder("DOMINIO"))
 
+        if SIZE_ADJUST_MODE:
+            self.size_label = QLabel()
+            self.size_label.setObjectName("sizeDebugLabel")
+            top_bar_layout.addWidget(self.size_label)
+            self._update_size_label()
+
         root.addWidget(top_bar)
 
         # Debajo, la imagen de campaña completa (sin recortar).
         background = _BackgroundWidget(ASSETS_DIR / "home_background.png")
         root.addWidget(background, stretch=1)
+
+    def resizeEvent(self, event) -> None:
+        self._update_size_label()
+        super().resizeEvent(event)
+
+    def _update_size_label(self) -> None:
+        """Solo existe en SIZE_ADJUST_MODE: muestra el ancho x alto actual
+        de la ventana en píxeles, en vivo, mientras se arrastra el borde
+        para encontrar el tamaño ideal."""
+        if self.size_label is not None:
+            self.size_label.setText(f"{self.width()} x {self.height()} px")
 
     def _on_apps(self) -> None:
         if self.main_window is None:

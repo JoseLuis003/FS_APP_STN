@@ -1,13 +1,15 @@
 """Panel de configuración de "Shares Configuracion", parte del catálogo de
 LTP / CSS: se muestra u oculta según el checkbox del mismo nombre (ver
-`LtpCssWindow._on_shares_configuracion_toggled`).
+`LtpCssWindow._build_ui`, donde se conecta el `toggled` de esa casilla a
+`setVisible` de este panel).
 
 Trae tres secciones, tal como en la pantalla original:
 
 - SETTING's: HOSTNAME y CIUDAD (casilla + campo editable, precargados con
   el nombre real del equipo — CIUDAD toma las primeras 3 letras de ese
-  nombre), los 4 campos LNIATA (casilla + campo limitado a 6 dígitos, para
-  evitar errores de tecleo) y CONTINGENCIA (solo casilla, sin campo).
+  nombre), los 4 campos LNIATA (casilla + campo alfanumérico limitado a 6
+  caracteres, para evitar errores de tecleo) y CONTINGENCIA (solo casilla,
+  sin campo).
 - DEVICES: BGR, OCR (WGE queda deshabilitado por ahora, como en la imagen
   de referencia).
 - CRT's: 2, 4.
@@ -31,8 +33,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# Los campos LNIATA solo aceptan dígitos, hasta este máximo de caracteres.
-LNIATA_MAX_DIGITS = 6
+# Los campos LNIATA aceptan letras y números (alfanumérico), hasta este
+# máximo de caracteres.
+LNIATA_MAX_LENGTH = 6
 
 # Sufijos de los 4 campos LNIATA, en el mismo orden que la imagen de
 # referencia (CRT, ATB, BTP, DCP).
@@ -71,8 +74,8 @@ class SharesConfigPanel(QWidget):
         settings_layout.setVerticalSpacing(6)
         settings_layout.setHorizontalSpacing(10)
 
-        digits_validator = QRegularExpressionValidator(
-            QRegularExpression(rf"^\d{{0,{LNIATA_MAX_DIGITS}}}$")
+        alphanumeric_validator = QRegularExpressionValidator(
+            QRegularExpression(rf"^[A-Za-z0-9]{{0,{LNIATA_MAX_LENGTH}}}$")
         )
 
         self.hostname_check = QCheckBox("HOSTNAME")
@@ -85,9 +88,9 @@ class SharesConfigPanel(QWidget):
         for row_index, suffix in enumerate(_LNIATA_SUFFIXES, start=1):
             check = QCheckBox(f"LNIATA {suffix}")
             edit = QLineEdit()
-            edit.setMaxLength(LNIATA_MAX_DIGITS)
-            edit.setValidator(digits_validator)
-            edit.setPlaceholderText(f"hasta {LNIATA_MAX_DIGITS} dígitos")
+            edit.setMaxLength(LNIATA_MAX_LENGTH)
+            edit.setValidator(alphanumeric_validator)
+            edit.setPlaceholderText(f"hasta {LNIATA_MAX_LENGTH} caracteres")
             self._add_setting_row(settings_layout, row_index, check, edit)
             self.lniata_checks[suffix] = check
             self.lniata_edits[suffix] = edit

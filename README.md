@@ -149,8 +149,8 @@ vuelve a desmarcar. Dentro de SETTING's:
   CIUDAD toma las primeras 3 letras de ese mismo nombre, en mayúsculas),
   pero el técnico puede editar ese valor libremente.
 - Los 4 campos **LNIATA** (CRT, ATB, BTP, DCP) empiezan desmarcados y
-  vacíos, y solo aceptan hasta 6 dígitos numéricos (nada de letras ni más
-  de 6 caracteres), para evitar errores de tecleo.
+  vacíos, y aceptan letras y números (alfanumérico) hasta un máximo de 6
+  caracteres, para evitar errores de tecleo.
 - **CONTINGENCIA** es solo una casilla, sin campo asociado.
 - En todos los campos con casilla, el campo de texto solo se puede editar
   mientras su casilla esté marcada (se deshabilita al desmarcarla, pero
@@ -162,6 +162,29 @@ Esta es la segunda de varias condiciones que se están agregando "por
 partes" a la pantalla LTP / CSS (la primera fue el grupo exclusivo
 GEMALTO/3M/DESKO, arriba); las siguientes se irán sumando según se vayan
 definiendo.
+
+**Qué hace "Shares Configuracion" al presionar INSTALAR
+(`app/shares_config_apply.py`):** a diferencia del resto del catálogo, este
+ítem no ejecuta un instalador — edita directamente los archivos de Shares
+que ya están en el equipo, usando los valores actuales de CIUDAD y
+HOSTNAME del panel. En orden:
+
+1. Busca la carpeta `C:\LTP\AppDatCM\CNT` y la renombra al valor de
+   CIUDAD (ej. `CNT` -> `PTY`).
+2. Dentro de esa carpeta, busca `LTPCMCNT.XRF` y le cambia las 3 últimas
+   letras antes de la extensión ("CNT") por el valor de CIUDAD (ej.
+   `LTPCMCNT.XRF` -> `LTPCMPTY.XRF`).
+3. Abre ese archivo, reemplaza cualquier otra aparición de "CNT" por el
+   valor de CIUDAD, y en la línea `WORKSTATION_NAME=CHECKIN` cambia la
+   clave `WORKSTATION_NAME` por el valor de HOSTNAME (queda, por ejemplo,
+   `LTP-JB=CHECKIN`).
+
+Es idempotente: si se vuelve a presionar INSTALAR después de que la
+carpeta y el archivo ya quedaron renombrados, los reutiliza en vez de
+fallar por no encontrar `CNT`. Si CIUDAD o HOSTNAME están vacíos, o si la
+carpeta/archivo no aparecen donde se esperan, se marca como error en la
+casilla (igual que un instalador que falla) y el resto de la cola sigue
+su curso con normalidad.
 
 **Importante:** igual que en `apps.json`, los valores de `installer` y
 `silent_args` de `ltp_css_apps.json` son placeholders — hay que revisarlos
@@ -210,6 +233,7 @@ FS_APP_STN/
 │   ├── installer.py          # motor de instalación (subprocess + QThread)
 │   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
+│   ├── shares_config_apply.py # renombra/edita los archivos de Shares (acción "Shares Configuracion")
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
 │       ├── home_window.py    # portada (FS APP PORTABLE): APPS / LTP-CSS / DOMINIO

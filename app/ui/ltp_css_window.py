@@ -9,6 +9,12 @@ GEMALTO / 3M / DESKO son mutuamente excluyentes (solo uno se puede marcar a
 la vez) mediante el mecanismo de "grupo exclusivo" de
 `app/ui/catalog_widgets.py` — ver el campo `exclusive_group` en
 `config/ltp_css_apps.json`.
+
+"Shares Configuracion" tampoco se instala como los demás ítems: al marcar
+su casilla aparece el panel `SharesConfigPanel` (CIUDAD, HOSTNAME, LNIATA,
+etc.) y, al presionar INSTALAR, se aplica por separado con
+`app/shares_config_apply.py` en vez de mandarse al motor de instalación
+genérico.
 """
 from __future__ import annotations
 
@@ -34,6 +40,7 @@ from PySide6.QtWidgets import (
 from app.config import ASSETS_DIR, AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings
 from app.installer import InstallManager
 from app.report import generate_report
+from app.shares_config_apply import SharesConfigError, apply_shares_configuration
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.shares_config_panel import SharesConfigPanel
 from app.ui.styles import build_stylesheet
@@ -169,7 +176,15 @@ class LtpCssWindow(QMainWindow):
             QMessageBox.warning(self, "Instalar", "No hay ninguna aplicación seleccionada.")
             return
 
-        if not Path(self.settings.installers_base_path).exists():
+        # "Shares Configuracion" no es un instalador tradicional: se
+        # separa de la cola normal y se aplica aparte con los valores del
+        # panel (ver `_run_shares_configuration`).
+        shares_entry = self.checkboxes.get("shares_configuracion")
+        apply_shares = shares_entry is not None and shares_entry[0] in selected
+        if apply_shares:
+            selected = [it for it in selected if it is not shares_entry[0]]
+
+        if selected and not Path(self.settings.installers_base_path).exists():
             QMessageBox.critical(
                 self,
                 "Carpeta de instaladores no encontrada",
@@ -184,11 +199,53 @@ class LtpCssWindow(QMainWindow):
         self._results = {"ok": 0, "error": 0}
         self._install_records: list[tuple[str, str, datetime]] = []
 
-        self.install_manager = InstallManager(self.settings.installers_base_path, self)
-        self.install_manager.item_started.connect(self._on_item_started)
-        self.install_manager.item_finished.connect(self._on_item_finished)
-        self.install_manager.queue_finished.connect(self._on_queue_finished)
-        self.install_manager.start(selected)
+        if apply_shares:
+            self._run_shares_configuration(shares_entry)
+
+        if selected:
+            self.install_manager = InstallManager(self.settings.installers_base_path, self)
+            self.install_manager.item_started.connect(self._on_item_started)
+            self.install_manager.item_finished.connect(self._on_item_finished)
+            self.install_manager.queue_finished.connect(self._on_queue_finished)
+            self.install_manager.start(selected)
+        else:
+            # Solo se había marcado Shares Configuracion: no queda nada
+            # más que mandar al motor de instalación normal.
+            self._on_queue_finished()
+
+    def _run_shares_configuration(self, shares_entry: tuple[AppItem, QCheckBox]) -> None:
+        """Aplica la configuración de Shares (ver `app/shares_config_apply.py`)
+        usando los valores actuales de CIUDAD y HOSTNAME del panel, y refleja
+        el resultado en la casilla igual que un ítem normal de la cola."""
+        item, checkbox = shares_entry
+        checkbox.setProperty("installing", "true")
+        checkbox.style().unpolish(checkbox)
+        checkbox.style().polish(checkbox)
+        self.status_label.setText("Aplicando configuración de Shares...")
+
+        hostname = self.shares_config_panel.hostname_edit.text()
+        ciudad = self.shares_config_panel.ciudad_edit.text()
+
+        try:
+            detail = apply_shares_configuration(hostname, ciudad)
+        except SharesConfigError as exc:
+            self._results["error"] += 1
+            checkbox.setProperty("installing", "false")
+            checkbox.setProperty("failed", "true")
+            checkbox.setChecked(False)
+            checkbox.setToolTip(f"Error: {exc}")
+            checkbox.style().unpolish(checkbox)
+            checkbox.style().polish(checkbox)
+            self.status_label.setText(f"Shares Configuracion: error - {exc}")
+            return
+
+        self._results["ok"] += 1
+        self._install_records.append((item.label, item.version, datetime.now()))
+        checkbox.setProperty("installing", "false")
+        checkbox.setVisible(False)
+        checkbox.style().unpolish(checkbox)
+        checkbox.style().polish(checkbox)
+        self.status_label.setText(f"Shares Configuracion aplicada ({detail}).")
 
     # --------------------------------------------------------- señales cola
     def _on_item_started(self, item_id: str) -> None:

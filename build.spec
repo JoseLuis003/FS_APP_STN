@@ -9,6 +9,7 @@ a = Analysis(
     datas=[
         ('config', 'config'),  # se copian junto al .exe la primera vez
         ('assets', 'assets'),  # iconos (checkmark del checkbox, etc.) empaquetados dentro del .exe
+        ('scripts', 'scripts'),  # scripts de PowerShell (unión al dominio) empaquetados dentro del .exe
     ],
     hiddenimports=[],
     hookspath=[],

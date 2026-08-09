@@ -2,10 +2,10 @@
 
 Muestra 3 botones de navegación (APPS, LTP / CSS, DOMINIO) en una barra
 superior, y debajo la imagen de campaña completa (sin recortarla). APPS
-abre el catálogo de instalación original (`app/ui/main_window.py`) y
-LTP / CSS abre su propio catálogo (`app/ui/ltp_css_window.py`); DOMINIO
-todavía no tiene una sección definida, así que muestra un aviso de
-"próximamente" al presionarlo.
+abre el catálogo de instalación original (`app/ui/main_window.py`),
+LTP / CSS abre su propio catálogo (`app/ui/ltp_css_window.py`) y DOMINIO
+abre la pantalla de unión al dominio `copaair.com`
+(`app/ui/dominio_window.py`).
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -25,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import ASSETS_DIR
+from app.ui.dominio_window import DominioWindow
 from app.ui.ltp_css_window import LtpCssWindow
 from app.ui.main_window import MainWindow
 
@@ -120,6 +120,7 @@ class HomeWindow(QMainWindow):
         # catálogo cada vez).
         self.main_window: MainWindow | None = None
         self.ltp_css_window: LtpCssWindow | None = None
+        self.dominio_window: DominioWindow | None = None
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -148,7 +149,7 @@ class HomeWindow(QMainWindow):
 
         apps_btn.clicked.connect(self._on_apps)
         ltp_btn.clicked.connect(self._on_ltp_css)
-        dominio_btn.clicked.connect(lambda: self._show_placeholder("DOMINIO"))
+        dominio_btn.clicked.connect(self._on_dominio)
 
         if SIZE_ADJUST_MODE:
             self.size_label = QLabel()
@@ -199,9 +200,15 @@ class HomeWindow(QMainWindow):
         if self.ltp_css_window is not None:
             self.ltp_css_window.hide()
 
-    def _show_placeholder(self, section_name: str) -> None:
-        QMessageBox.information(
-            self,
-            section_name,
-            f'La sección "{section_name}" todavía no está disponible. Próximamente.',
-        )
+    def _on_dominio(self) -> None:
+        if self.dominio_window is None:
+            self.dominio_window = DominioWindow(on_back=self._on_back_from_dominio)
+        self.dominio_window.show()
+        self.hide()
+
+    def _on_back_from_dominio(self) -> None:
+        """Se conecta al botón ATRAS de la pantalla DOMINIO para volver a
+        mostrar esta portada."""
+        self.show()
+        if self.dominio_window is not None:
+            self.dominio_window.hide()

@@ -6,8 +6,8 @@ APPS, LTP / CSS y DOMINIO. APPS y LTP / CSS llevan cada uno a su propio
 catálogo de aplicaciones en checkboxes, que permite seleccionar varias,
 instalarlas de forma silenciosa una por una, y va quitando de la lista cada
 ítem que termina de instalarse correctamente (igual que la app original).
-DOMINIO todavía no tiene una sección definida — muestra un aviso de
-"próximamente" al presionarlo.
+DOMINIO une el equipo al dominio `copaair.com` (ver sección "Pantalla
+DOMINIO").
 
 ## Portada (`app/ui/home_window.py`)
 
@@ -17,10 +17,10 @@ DOMINIO todavía no tiene una sección definida — muestra un aviso de
   "Catálogo de instalación (botón APPS)"). Usa `config/apps.json`.
 - **LTP / CSS**: abre un segundo catálogo de instalación, independiente del
   de APPS (ver sección "Catálogo LTP / CSS"). Usa `config/ltp_css_apps.json`.
-- Ambas ventanas se crean una sola vez y se reutilizan si se vuelve a
-  entrar (no se reconstruye el catálogo cada vez).
-- **DOMINIO**: muestra un mensaje de "próximamente" — para activarlo hay
-  que definir primero qué pantalla o función debe abrir.
+- **DOMINIO**: abre la pantalla de unión al dominio `copaair.com` (ver
+  sección "Pantalla DOMINIO").
+- Las tres ventanas se crean una sola vez y se reutilizan si se vuelve a
+  entrar (no se reconstruyen cada vez).
 - La imagen de fondo (`assets/home_background.png`) es material de
   campaña interna de Copa Airlines; si se necesita cambiarla, basta con
   reemplazar ese archivo (se muestra completa, sin recortar, con barras de
@@ -270,6 +270,80 @@ correctamente: nombre, versión (tomada del campo `version` de
 fecha/hora de instalación. Las aplicaciones que fallaron no aparecen en el
 reporte (quedan marcadas en rojo en la pantalla y registradas en `logs/`).
 
+## Pantalla DOMINIO (`app/ui/dominio_window.py`, `app/domain_join.py`)
+
+Une el equipo al dominio `copaair.com`. Emula el script `DomainJoined.ps1`
+que ya usaba el equipo de soporte, pero corrigiendo el problema que motivó
+este cambio: ese script nunca llegaba a pedir ni validar usuario/contraseña
+(`$credentials` se usaba sin haberse asignado nunca), así que si la unión al
+dominio fallaba, el script igual seguía con los pasos siguientes (grupos
+locales, autologon, reinicio) como si nada.
+
+**Flujo desde la UI:**
+
+1. El técnico completa: nombre del equipo (viene prellenado con el nombre
+   actual — si lo cambia, el equipo se renombra en el mismo paso que se une
+   al dominio), la Unidad Organizativa (mismas 5 opciones del script
+   original: ATO-BCK, ATO-COU-GTE, CGO, CTO, MTO), su usuario (solo el
+   usuario, sin dominio — el prefijo `copaair\` se muestra fijo en la UI y
+   Python lo antepone) y su contraseña.
+2. Al presionar "UNIR AL DOMINIO", un `DomainJoinWorker` (QThread) corre en
+   segundo plano para no congelar la ventana:
+   - **Usuario o contraseña incorrectos**: se le avisa al técnico con un
+     mensaje claro y se limpia SOLO el campo de contraseña — equipo, OU y
+     usuario quedan como estaban, para que pueda corregir y reintentar sin
+     volver a escribir todo.
+   - **Cualquier otro error** (OU inválida, sin red, nombre de equipo
+     duplicado, etc.): se muestra el detalle y no se continúa con los pasos
+     siguientes.
+   - **Éxito**: se agregan los grupos de soporte (`COPAAIR\GRP-Soporte Copa
+     Panama` y `COPAAIR\GRP-Soporte Copa Estaciones`) al grupo local
+     Administrators y se limpia el autologon local. Si este paso posterior
+     falla, el equipo de todos modos YA quedó unido al dominio, así que se
+     muestra como advertencia, no como fallo total.
+3. **Reinicio**: a diferencia del script original (que reiniciaba sin
+   preguntar), acá siempre se le pregunta al técnico antes de reiniciar. Si
+   confirma, se ejecuta `shutdown /r /t 10` (10 segundos de margen).
+
+**Cómo se distingue "credenciales incorrectas" de otros errores:** el
+script `scripts/join_domain.ps1` revisa el código de error nativo de Win32
+`1326` (`ERROR_LOGON_FAILURE`) dentro de la cadena de `.InnerException` de
+la excepción — no el texto del mensaje, que cambia según el idioma de
+Windows. El script imprime exactamente una de estas líneas a stdout, que
+Python interpreta (`app/domain_join.py`):
+
+```
+RESULT_OK
+RESULT_BAD_CREDENTIALS
+RESULT_ERROR: <detalle>
+```
+
+**Seguridad:** la contraseña de dominio nunca se pasa como argumento de
+línea de comandos (quedaría visible en el Administrador de tareas) ni se
+guarda en `config/settings.json` ni en ningún otro archivo — se le pasa al
+script de PowerShell únicamente por su entrada estándar (stdin), y el
+técnico la vuelve a escribir cada vez que usa esta pantalla.
+
+**Scripts de PowerShell (`scripts/`):** son "delgados a propósito" — toda
+la lógica de reintentos y de qué mostrarle al técnico vive en Python; los
+scripts solo ejecutan la operación de Windows y reportan el resultado.
+Se empaquetan dentro del `.exe` (ver `build.spec`, carpeta `scripts/`) y se
+extraen a una carpeta temporal en tiempo de ejecución, igual que `assets/`.
+
+- `join_domain.ps1`: hace el `Add-Computer` (con `-NewName` si corresponde,
+  para renombrar en el mismo paso).
+- `post_join_setup.ps1`: agrega los grupos de soporte a Administrators
+  (cada nombre de grupo se pasa como un solo argumento — el script original
+  tenía un bug acá: `COPAAIR\GRP-Soporte Copa Panama` sin comillas se
+  interpreta como varios argumentos sueltos y falla al invocarse) y limpia
+  el autologon local.
+
+**Importante:** este entorno de desarrollo no tiene Windows/PowerShell
+disponible, así que la lógica de orquestación en Python está probada con
+`subprocess.run` simulado (mockeado), pero la ejecución real de los `.ps1`
+contra un controlador de dominio solo se puede verificar en una máquina
+Windows real, unida (o no) a la red de Copa.
+
 ## Estructura del proyecto
 
 ```
@@ -284,13 +358,18 @@ FS_APP_STN/
 │   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   ├── shares_config_apply.py # renombra/edita los archivos de Shares (acción "Shares Configuracion")
+│   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
 │       ├── home_window.py    # portada (FS APP PORTABLE): APPS / LTP-CSS / DOMINIO
 │       ├── main_window.py    # catálogo de instalación (botón APPS)
 │       ├── ltp_css_window.py # catálogo de instalación (botón LTP / CSS)
 │       ├── shares_config_panel.py # panel SETTING's/DEVICES/CRT's de "Shares Configuracion"
+│       ├── dominio_window.py # pantalla de unión al dominio (botón DOMINIO)
 │       └── styles.py         # hoja de estilos (QSS)
+├── scripts/
+│   ├── join_domain.ps1        # Add-Computer + detección de credenciales inválidas (cod. 1326)
+│   └── post_join_setup.ps1    # grupos locales de Administrators + limpieza de autologon
 ├── assets/
 │   ├── check.png              # ícono del checkmark de los checkboxes
 │   └── home_background.png    # imagen de campaña de la portada
@@ -446,8 +525,11 @@ hora, comando ejecutado y código de salida (0 y 3010 se consideran éxito;
    selección única entre GEMALTO / 3M / DESKO y el panel de "Shares
    Configuracion"; las secciones DEVICES y CRT's de ese panel todavía no
    tienen ninguna regla especial).
-3. Definir qué debe hacer la sección DOMINIO de la portada (por ahora solo
-   muestra un aviso de "próximamente").
+3. Probar la pantalla DOMINIO en una máquina Windows real, unida (o no) a
+   la red de Copa — este entorno de desarrollo no tiene PowerShell/Windows
+   disponible, así que solo se pudo verificar la lógica de orquestación en
+   Python (con `subprocess.run` simulado) y revisar el código de los
+   scripts `.ps1` manualmente.
 4. Decidir si el modo de instalación debe poder ser paralelo (varias a la
    vez) en vez de secuencial — hoy corre una por una para evitar
    contención de recursos.

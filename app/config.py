@@ -38,6 +38,19 @@ def get_assets_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "assets"
 
 
+def get_scripts_dir() -> Path:
+    """Carpeta de scripts auxiliares (PowerShell, etc.) que la app invoca
+    pero que el técnico no necesita editar — igual que `get_assets_dir()`,
+    se empaquetan dentro del .exe y PyInstaller los extrae a una carpeta
+    temporal (`sys._MEIPASS`) al arrancar."""
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass) / "scripts"
+        return get_app_root() / "scripts"
+    return Path(__file__).resolve().parent.parent / "scripts"
+
+
 def get_default_installers_base_path() -> str:
     """Carpeta de instaladores por defecto: `CM APPS\\APPS` dentro de la
     MISMA unidad (letra de disco) desde la que se está ejecutando la app en
@@ -59,6 +72,7 @@ APPS_FILE = CONFIG_DIR / "apps.json"
 LTP_CSS_APPS_FILE = CONFIG_DIR / "ltp_css_apps.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 ASSETS_DIR = get_assets_dir()
+SCRIPTS_DIR = get_scripts_dir()
 
 
 @dataclass

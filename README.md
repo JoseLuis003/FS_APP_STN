@@ -817,6 +817,16 @@ más nueva; no es un fallo real, no hay nada que instalar). Cuando un paso
 falla, el log también registra stdout y stderr por separado (o aclara que
 el instalador no escribió nada en ninguno de los dos, si así fue).
 
+"Shares Configuracion" y "AppShell Configuracion" (`LtpCssWindow._run_shares_configuration()`
+y `_run_appshell_configuration()`) no pasan por `InstallManager`/`InstallWorker`
+como el resto de la cola, así que tienen su propia instancia de
+`InstallLogger` (`LtpCssWindow.logger`, creada en `__init__`) y escriben ahí
+mismo su resultado (`OK (...)` o `ERROR - ...`) al terminar. Antes de esto,
+un fallo en cualquiera de las dos quedaba solo en la casilla y en
+`status_label` — nunca en `logs/`, aunque el diálogo final ("Instalación
+finalizada") siempre le indica al técnico que revise esa carpeta para el
+detalle.
+
 ## Próximos pasos sugeridos
 
 1. Confirmar los `silent_args` y rutas de instalador reales de cada

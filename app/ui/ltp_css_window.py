@@ -91,7 +91,7 @@ from app.appshell_config_apply import (
     apply_appshell_mastcom_config,
 )
 from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
-from app.installer import InstallManager
+from app.installer import InstallLogger, InstallManager
 from app.shares_config_apply import (
     SharesConfigError,
     apply_shares_configuration,
@@ -132,6 +132,19 @@ class LtpCssWindow(QMainWindow):
         # item_id -> (AppItem, QCheckBox)
         self.checkboxes: dict[str, tuple[AppItem, QCheckBox]] = {}
         self.install_manager: InstallManager | None = None
+
+        # "Shares Configuracion" y "AppShell Configuracion" no pasan por
+        # `InstallManager`/`InstallWorker` (ver `_run_shares_configuration`
+        # y `_run_appshell_configuration`), así que sin este logger propio
+        # sus resultados solo quedaban en la casilla y en `status_label`
+        # -- nunca en la carpeta `logs`, aunque el diálogo final siempre le
+        # dice al técnico que la revise ahí. Con esto, sus mensajes quedan
+        # en el mismo archivo `logs/install_<fecha>.log` que usa el resto
+        # de la cola (cada `InstallManager` crea su propia instancia de
+        # `InstallLogger`, pero todas escriben -- con `open(..., "a")` -- al
+        # mismo archivo del día, así que no hay conflicto entre esta
+        # instancia y la de `InstallManager`).
+        self.logger = InstallLogger()
 
         self._build_ui()
 
@@ -413,6 +426,7 @@ class LtpCssWindow(QMainWindow):
         dcp_enabled = self.shares_config_panel.lniata_checks["DCP"].isChecked()
         contingencia_enabled = self.shares_config_panel.contingencia_check.isChecked()
 
+        self.logger.write(f"{item.label}: iniciando -> CIUDAD={ciudad!r}, HOSTNAME={hostname!r}")
         try:
             detail_xrf = apply_shares_configuration(hostname, ciudad)
             detail_udf = apply_udf_configuration(
@@ -433,6 +447,7 @@ class LtpCssWindow(QMainWindow):
             detail_shortcuts = create_ltp_shares_shortcuts(ciudad)
             detail = f"{detail} | {detail_shortcuts}"
         except (SharesConfigError, ShortcutError) as exc:
+            self.logger.write(f"{item.label}: ERROR - {exc}")
             self._results["error"] += 1
             checkbox.setProperty("installing", "false")
             checkbox.setProperty("failed", "true")
@@ -443,6 +458,7 @@ class LtpCssWindow(QMainWindow):
             self.status_label.setText(f"Shares Configuracion: error - {exc}")
             return
 
+        self.logger.write(f"{item.label}: OK ({detail})")
         self._results["ok"] += 1
         self._install_records.append((item.label, item.version, datetime.now()))
         checkbox.setProperty("installing", "false")
@@ -485,7 +501,10 @@ class LtpCssWindow(QMainWindow):
         selected_ini_devices = [name for name in ("ATB", "BTP", "DCP") if device_checks[name].isChecked()]
         selected_mastcom_options = [name for name in ("BGR", "OCR") if device_checks[name].isChecked()]
 
+        self.logger.write(f"{item.label}: iniciando -> DEVICE's seleccionados: {selected_ini_devices + selected_mastcom_options}")
+
         if not selected_ini_devices and not selected_mastcom_options:
+            self.logger.write(f"{item.label}: ERROR - No hay ninguna opción de DEVICE's (ATB/BTP/DCP/BGR/OCR) seleccionada.")
             self._results["error"] += 1
             checkbox.setProperty("installing", "false")
             checkbox.setProperty("failed", "true")
@@ -512,6 +531,7 @@ class LtpCssWindow(QMainWindow):
             error = exc
 
         if error is not None:
+            self.logger.write(f"{item.label}: ERROR - {error}")
             self._results["error"] += 1
             if applied_names:
                 self.appshell_config_panel.reset_device_checks(applied_names)
@@ -525,6 +545,7 @@ class LtpCssWindow(QMainWindow):
             return
 
         detail = " | ".join(details)
+        self.logger.write(f"{item.label}: OK ({detail})")
         self._results["ok"] += 1
         self._install_records.append((item.label, item.version, datetime.now()))
         checkbox.setProperty("installing", "false")

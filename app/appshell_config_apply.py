@@ -23,8 +23,17 @@ escribe ahí, sin coma. Esto permite marcar y aplicar ATB, BTP y DCP en
 corridas distintas (o juntas, en cualquier combinación) sin perder lo que
 ya se había configurado antes.
 
-BGR, OCR y BGR-OCR (las otras 3 casillas del submenú DEVICE's) no tienen
-ninguna lógica todavía -- no se tocan acá."""
+BGR y OCR (las otras 2 casillas del submenú DEVICE's) tienen su propia
+lógica, completamente separada de la de ATB/BTP/DCP: en vez de editar el
+INI de arriba, crean/actualizan un archivo XML,
+
+    C:\\Program Files (x86)\\DXC Technology\\PssAppShell\\Mastcom\\Mastcom.xml
+
+con un `<Session>` por cada una marcada (ver `apply_appshell_mastcom_config`
+más abajo para el detalle). Si el archivo no existe, se crea completo; si
+ya existe, NO se borra lo que ya tenía configurado -- solo se agrega (o se
+actualiza in-place, si ya había una sesión con el mismo Alias) la
+información de la(s) opción(es) marcada(s)."""
 from __future__ import annotations
 
 import re
@@ -120,3 +129,157 @@ def apply_appshell_device_config(
         f.write(text)
 
     return f"AppShell: {ini_path} ({', '.join(devices)})"
+
+
+# --------------------------------------------------------------------------
+# BGR / OCR -- Mastcom.xml (ver el docstring del módulo). A diferencia de
+# ATB/BTP/DCP (que editan un INI ya existente), acá el archivo puede no
+# existir todavía -- si no existe, se crea completo; si existe, se agrega o
+# actualiza (por Alias) sin tocar el resto del archivo.
+# --------------------------------------------------------------------------
+
+DEFAULT_MASTCOM_XML_PATH = Path(
+    r"C:\Program Files (x86)\DXC Technology\PssAppShell\Mastcom\Mastcom.xml"
+)
+
+# Alias que identifica a cada sesión dentro del <Device>, y el bloque
+# <Session>...</Session> completo (ya indentado igual que el resto del
+# archivo -- 3 tabs para <Session>/</Session>, 4 tabs para sus campos)
+# que corresponde a cada opción del submenú DEVICE's.
+_BGR_ALIAS = "BGR1"
+_BGR_SESSION_BLOCK = (
+    "\t\t\t<Session Name=\"Serial AEA\" Type=\"Reader\" Subtype=\"BGR\" Alias=\"BGR1\">\n"
+    "\t\t\t\t<DLL>SERIALPORT.DLL</DLL>\n"
+    "\t\t\t\t<Protocol>Serial AEA</Protocol>\n"
+    "\t\t\t\t<Resource>COM6</Resource>\n"
+    "\t\t\t\t<Speed>19200</Speed>\n"
+    "\t\t\t\t<Parity>N</Parity>\n"
+    "\t\t\t\t<Databits>8</Databits>\n"
+    "\t\t\t\t<Stopbits>1</Stopbits>\n"
+    "\t\t\t\t<FlowControl>Hardware</FlowControl>\n"
+    "\t\t\t\t<ReceiptPrinter>NO</ReceiptPrinter>\n"
+    "\t\t\t</Session>\n"
+)
+
+_OCR_ALIAS = "RTE1"
+_OCR_SESSION_BLOCK = (
+    "\t\t\t<Session Name=\"Serial\" Type=\"Reader\" Subtype=\"RTE\" Alias=\"RTE1\">\n"
+    "\t\t\t\t<DLL>SERIALPORT.DLL</DLL>\n"
+    "\t\t\t\t<Protocol>Serial Reader</Protocol>\n"
+    "\t\t\t\t<Resource>COM9</Resource>\n"
+    "\t\t\t\t<Speed>9600</Speed>\n"
+    "\t\t\t\t<Parity>E</Parity>\n"
+    "\t\t\t\t<Databits>7</Databits>\n"
+    "\t\t\t\t<Stopbits>1</Stopbits>\n"
+    "\t\t\t\t<FlowControl>Hardware</FlowControl>\n"
+    "\t\t\t</Session>\n"
+)
+
+# Orden fijo de aplicación (no depende del orden en que el técnico marcó
+# las casillas), igual que DEVICE_ORDER para ATB/BTP/DCP.
+MASTCOM_OPTION_ORDER = ["BGR", "OCR"]
+
+# option -> (Alias, bloque <Session> completo)
+_MASTCOM_SESSIONS: dict[str, tuple[str, str]] = {
+    "BGR": (_BGR_ALIAS, _BGR_SESSION_BLOCK),
+    "OCR": (_OCR_ALIAS, _OCR_SESSION_BLOCK),
+}
+
+# Bloque <Device>...</Device> completo, con Type="DEVHAN" (el identificador
+# que se busca en un archivo ya existente -- ver `_DEVICE_BLOCK_PATTERN`).
+_DEVICE_BLOCK_PATTERN = re.compile(
+    r'(?P<open><Device\b[^>]*Type="DEVHAN"[^>]*>)(?P<inner>.*?)(?P<close></Device>)',
+    re.DOTALL,
+)
+
+
+def _build_mastcom_xml(session_blocks: str) -> str:
+    """Arma el archivo Mastcom.xml completo (Configuration/OPAT/Device),
+    con `session_blocks` (uno o más bloques <Session>...</Session>, ya
+    concatenados) dentro del único <Device>. Se usa solo cuando el archivo
+    todavía no existe."""
+    return (
+        "<Configuration>\n"
+        "\t<OPAT>\n"
+        '\t\t<Device Type="DEVHAN" Name="PSSAppShell" DialogVersion="8.01">\n'
+        f"{session_blocks}"
+        "\t\t</Device>\n"
+        "\t</OPAT>\n"
+        "</Configuration>\n"
+    )
+
+
+def apply_appshell_mastcom_config(
+    selected_options: list[str],
+    xml_path: Path = DEFAULT_MASTCOM_XML_PATH,
+) -> str:
+    """Aplica, para cada opción en `selected_options` (subconjunto de
+    "BGR"/"OCR", en cualquier orden), su sesión correspondiente en
+    `xml_path` (ver el docstring del módulo).
+
+    Si el archivo no existe, se crea completo (Configuration/OPAT/Device)
+    con solo la(s) sesión(es) seleccionada(s). Si ya existe, se busca el
+    bloque `<Device Type="DEVHAN" ...>...</Device>`: por cada opción
+    seleccionada, si ya hay una sesión con su mismo Alias (BGR1/RTE1), se
+    reemplaza in-place (para no dejar dos sesiones BGR duplicadas si se
+    vuelve a aplicar); si no, se agrega al final, SIN tocar ninguna otra
+    sesión que ya estuviera configurada ahí (ej. si antes se aplicó BGR y
+    ahora se aplica solo OCR, la sesión BGR existente no se toca).
+
+    Se procesan siempre en el orden fijo `MASTCOM_OPTION_ORDER`, sin
+    importar el orden de `selected_options`.
+
+    Devuelve un mensaje corto de éxito para mostrar en el estado de la
+    pantalla. Lanza `AppShellConfigError` si no se seleccionó ninguna
+    opción, o si el archivo ya existe pero no tiene el bloque
+    `<Device Type="DEVHAN" ...>` esperado."""
+    options = [o for o in MASTCOM_OPTION_ORDER if o in set(selected_options)]
+    if not options:
+        raise AppShellConfigError("No hay ninguna opción de DEVICE's (BGR/OCR) seleccionada.")
+
+    xml_path = Path(xml_path)
+
+    if not xml_path.exists():
+        xml_path.parent.mkdir(parents=True, exist_ok=True)
+        session_blocks = "".join(_MASTCOM_SESSIONS[o][1] for o in options)
+        with xml_path.open("w", encoding="utf-8", newline="") as f:
+            f.write(_build_mastcom_xml(session_blocks))
+        return f"Mastcom: {xml_path} (creado, {', '.join(options)})"
+
+    with xml_path.open("r", encoding="utf-8", errors="replace", newline="") as f:
+        text = f.read()
+
+    device_match = _DEVICE_BLOCK_PATTERN.search(text)
+    if device_match is None:
+        raise AppShellConfigError(
+            f"El archivo '{xml_path}' ya existe pero no tiene el bloque "
+            "<Device Type=\"DEVHAN\" ...>...</Device> esperado."
+        )
+
+    inner = device_match.group("inner")
+    for option in options:
+        alias, session_block = _MASTCOM_SESSIONS[option]
+        alias_pattern = re.compile(
+            rf'<Session\b[^>]*Alias="{re.escape(alias)}"[^>]*>.*?</Session>[ \t]*\r?\n?',
+            re.DOTALL,
+        )
+        if alias_pattern.search(inner):
+            # Ya había una sesión de esta opción (de una corrida anterior):
+            # se reemplaza in-place, sin duplicarla.
+            inner = alias_pattern.sub(session_block, inner, count=1)
+        else:
+            # No tocar el resto del contenido -- solo se agrega al final,
+            # con una indentación consistente antes de </Device>.
+            inner = inner.rstrip(" \t\r\n") + "\n" + session_block
+
+    # Normaliza la indentación justo antes de </Device> (cosmético -- no
+    # afecta ningún dato ya configurado, todo el contenido de `inner` se
+    # conserva tal cual salvo por este espacio en blanco final).
+    inner = inner.rstrip(" \t\r\n") + "\n\t\t"
+
+    new_text = text[: device_match.start("inner")] + inner + text[device_match.start("close") :]
+
+    with xml_path.open("w", encoding="utf-8", newline="") as f:
+        f.write(new_text)
+
+    return f"Mastcom: {xml_path} ({', '.join(options)})"

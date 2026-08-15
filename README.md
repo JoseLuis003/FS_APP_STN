@@ -331,47 +331,70 @@ depender de un único código de salida de todo un `.bat`.
 **Panel "AppShell Configuracion" (`app/ui/appshell_config_panel.py`):** al
 marcar la casilla "AppShell Configuracion" del catálogo (columna de
 AppShell) aparece debajo un panel con una sola sección, **DEVICE's**, con
-6 casillas simples e independientes entre sí (no son un grupo exclusivo):
-ATB, BTP, DCP, BGR, OCR y BGR-OCR. El panel desaparece si se vuelve a
-desmarcar la casilla — mismo mecanismo que "Shares Configuracion"
-(`SharesConfigPanel`), pero sin ninguna sección de campos de texto.
+5 casillas simples e independientes entre sí (no son un grupo exclusivo):
+ATB, BTP, DCP, BGR y OCR. El panel desaparece si se vuelve a desmarcar la
+casilla — mismo mecanismo que "Shares Configuracion" (`SharesConfigPanel`),
+pero sin ninguna sección de campos de texto.
 
 Igual que "Shares Configuracion", **"AppShell Configuracion" NO pasa por
 el motor de instalación genérico**: al presionar INSTALAR,
 `LtpCssWindow._on_installar()` la saca de la cola normal y la aplica
 aparte con `app/appshell_config_apply.py`
-(`LtpCssWindow._run_appshell_configuration`). Solo ATB, BTP y DCP tienen
-lógica definida: por cada una que esté marcada, se agrega su puerto COM y
-su identificador al archivo INI de configuración de AppShell,
+(`LtpCssWindow._run_appshell_configuration`), en dos partes independientes
+que se pueden aplicar juntas en la misma corrida (una casilla de cada
+grupo, o de ambos, marcadas a la vez):
+
+*ATB / BTP / DCP → INI de AppShell.* Por cada una que esté marcada, se
+agrega su puerto COM y su identificador al archivo INI de configuración de
+AppShell,
 
     C:\Program Files (x86)\DXC Technology\PssAppShell\Configurations\PrintAgent_COPA_PROD.ini
 
-en dos líneas:
+en dos líneas: `device.comport=` recibe el puerto COM del equipo (ATB →
+`COM7`, BTP → `COM8`, DCP → `COM9`) y `device.list=` recibe su
+identificador (ATB → `ATB1`, BTP → `BTP1`, DCP → `DCP1`). Si la línea ya
+tiene algún valor después del `=` (de una corrida anterior, o de otro
+equipo aplicado en la misma corrida), el nuevo valor se agrega al final
+separado por una coma **sin espacio** (ej. `device.comport=COM7` pasa a
+`device.comport=COM7,COM8` al aplicar también BTP); si no hay nada después
+del `=`, el valor se escribe directo, sin coma. Los tres equipos se
+procesan siempre en el mismo orden (ATB, BTP, DCP), sin importar en qué
+orden estén marcadas las casillas en pantalla. Si el archivo INI no
+existe, o si falta alguna de las dos líneas esperadas, se lanza
+`AppShellConfigError`.
 
-- `device.comport=`: recibe el puerto COM del equipo (ATB → `COM7`, BTP →
-  `COM8`, DCP → `COM9`).
-- `device.list=`: recibe el identificador del equipo (ATB → `ATB1`, BTP →
-  `BTP1`, DCP → `DCP1`).
+*BGR / OCR → Mastcom.xml.* Por cada una que esté marcada, se crea o
+actualiza
 
-Si la línea ya tiene algún valor después del `=` (de una corrida
-anterior, o de otro equipo aplicado en la misma corrida), el nuevo valor
-se agrega al final separado por una coma **sin espacio** (ej.
-`device.comport=COM7` pasa a `device.comport=COM7,COM8` al aplicar
-también BTP). Si no hay nada después del `=`, el valor se escribe
-directo, sin coma. Los tres equipos se procesan siempre en el mismo orden
-(ATB, BTP, DCP), sin importar en qué orden estén marcadas las casillas en
-pantalla. Al terminar con éxito, la casilla "AppShell Configuracion" y su
-panel se ocultan (igual que cualquier ítem completado), y las casillas
-ATB/BTP/DCP que se hayan aplicado se desmarcan automáticamente
-(`reset_device_checks`) — así una corrida posterior no vuelve a agregar
-el mismo puerto/identificador dos veces. Si el archivo INI no existe, o
-si falta alguna de las dos líneas esperadas, se lanza
-`AppShellConfigError` y la casilla se refleja como error (se desmarca,
-queda visible, con un tooltip con el detalle), igual que cualquier fallo
-de instalación normal.
+    C:\Program Files (x86)\DXC Technology\PssAppShell\Mastcom\Mastcom.xml
 
-BGR, OCR y BGR-OCR todavía no tienen ninguna lógica definida — son
-casillas inertes: marcarlas no hace nada al presionar INSTALAR.
+agregando un `<Session>` con los parámetros seriales de ese lector dentro
+del `<Device Type="DEVHAN">` (BGR → protocolo "Serial AEA", `COM6`,
+19200 8N1, `Alias="BGR1"`; OCR → protocolo "Serial Reader", `COM9`, 9600
+7E1, `Alias="RTE1"`). Si el archivo no existe todavía, se crea completo
+(`Configuration`/`OPAT`/`Device`) con solo la(s) sesión(es) marcada(s). Si
+ya existe, **no se borra nada de lo que ya tenía configurado**: se busca
+el bloque `<Device Type="DEVHAN">` y, por cada opción marcada, si ya hay
+una sesión con su mismo `Alias` (de una corrida anterior) se reemplaza
+in-place (para no dejarla duplicada), y si no, se agrega al final sin
+tocar ninguna otra sesión ya presente (por ejemplo, si antes se aplicó
+solo BGR y ahora se marca solo OCR, la sesión BGR existente queda
+intacta). Si el archivo existe pero no tiene el bloque `<Device
+Type="DEVHAN">` esperado, se lanza `AppShellConfigError`.
+
+En ambos casos, si no hay ninguna casilla del submenú marcada al presionar
+INSTALAR con "AppShell Configuracion" seleccionada, también se refleja
+como error. Al terminar con éxito, la casilla "AppShell Configuracion" y
+su panel se ocultan (igual que cualquier ítem completado), y las casillas
+que se hayan aplicado (de cualquiera de los dos grupos) se desmarcan
+automáticamente (`reset_device_checks`) — así una corrida posterior no
+vuelve a aplicar el mismo cambio. Si una de las dos partes falla (por
+ejemplo, ATB se aplica bien pero después falla el paso de Mastcom), solo
+se desmarcan las opciones que **sí** llegaron a aplicarse antes del
+fallo — las que no se alcanzaron a aplicar quedan marcadas, listas para
+reintentar sin perder lo que ya se guardó. La casilla "AppShell
+Configuracion" se refleja como error (se desmarca, queda visible, con un
+tooltip con el detalle), igual que cualquier fallo de instalación normal.
 
 **Nota:** los ítems del catálogo LTP / CSS (EPSON UTILITY, GEMALTO, 3M,
 DESKO, EPSON USB DRIVER, VIRTUAL PORT, BGR IER, CUSTOM, Shares 5.0 y
@@ -499,7 +522,7 @@ FS_APP_STN/
 │   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   ├── shares_config_apply.py # renombra/edita los archivos de Shares (acción "Shares Configuracion")
-│   ├── appshell_config_apply.py # edita el INI de AppShell (acción "AppShell Configuracion", ATB/BTP/DCP)
+│   ├── appshell_config_apply.py # edita el INI (ATB/BTP/DCP) y Mastcom.xml (BGR/OCR) de "AppShell Configuracion"
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
@@ -507,7 +530,7 @@ FS_APP_STN/
 │       ├── main_window.py    # catálogo de instalación (botón APPS)
 │       ├── ltp_css_window.py # catálogo de instalación (botón LTP / CSS)
 │       ├── shares_config_panel.py # panel SETTING's/DEVICES/CRT's de "Shares Configuracion"
-│       ├── appshell_config_panel.py # panel DEVICE's (ATB/BTP/DCP/BGR/OCR/BGR-OCR) de "AppShell Configuracion"
+│       ├── appshell_config_panel.py # panel DEVICE's (ATB/BTP/DCP/BGR/OCR) de "AppShell Configuracion"
 │       ├── dominio_window.py # pantalla de unión al dominio (botón DOMINIO)
 │       └── styles.py         # hoja de estilos (QSS)
 ├── scripts/

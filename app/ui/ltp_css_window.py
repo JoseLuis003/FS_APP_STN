@@ -23,13 +23,15 @@ genérico.
 "AppShell Configuracion" (columna de AppShell) funciona con el mismo
 mecanismo de mostrar/ocultar un panel al marcar su casilla: al marcarla
 aparece `AppShellConfigPanel`, con el submenú DEVICE's (ATB, BTP, DCP,
-BGR, OCR, BGR-OCR). Igual que "Shares Configuracion", este ítem NO pasa
-por el motor de instalación genérico: al presionar INSTALAR se separa de
-la cola normal y se aplica aparte con `app/appshell_config_apply.py`
-(ver `_run_appshell_configuration`). ATB, BTP y DCP marcados agregan su
-puerto COM y su identificador al INI de configuración de AppShell
-(`PrintAgent_COPA_PROD.ini`); BGR, OCR y BGR-OCR todavía no tienen ninguna
-lógica definida y no hacen nada al presionar INSTALAR.
+BGR, OCR). Igual que "Shares Configuracion", este ítem NO pasa por el
+motor de instalación genérico: al presionar INSTALAR se separa de la cola
+normal y se aplica aparte con `app/appshell_config_apply.py` (ver
+`_run_appshell_configuration`). ATB, BTP y DCP marcados agregan su puerto
+COM y su identificador al INI de configuración de AppShell
+(`PrintAgent_COPA_PROD.ini`); BGR y OCR marcados crean o actualizan el
+archivo `Mastcom.xml` con su sesión correspondiente (sin borrar ninguna
+sesión ya configurada ahí). Las dos lógicas son independientes entre sí y
+pueden aplicarse juntas en la misma corrida.
 """
 from __future__ import annotations
 
@@ -83,7 +85,11 @@ def _initial_window_size() -> tuple[int, int]:
         height = min(height, max(available.height() - _SCREEN_MARGIN, 300))
     return width, height
 
-from app.appshell_config_apply import AppShellConfigError, apply_appshell_device_config
+from app.appshell_config_apply import (
+    AppShellConfigError,
+    apply_appshell_device_config,
+    apply_appshell_mastcom_config,
+)
 from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
 from app.installer import InstallManager
 from app.shares_config_apply import (
@@ -455,38 +461,70 @@ class LtpCssWindow(QMainWindow):
 
     def _run_appshell_configuration(self, appshell_entry: tuple[AppItem, QCheckBox]) -> None:
         """Aplica la configuración de AppShell (ver
-        `app/appshell_config_apply.py`): por cada casilla marcada entre ATB,
-        BTP y DCP en el submenú DEVICE's, agrega su puerto COM y su
-        identificador al INI de configuración de AppShell
-        (`PrintAgent_COPA_PROD.ini`). BGR, OCR y BGR-OCR no tienen ninguna
-        lógica todavía y se ignoran acá. Refleja el resultado en la casilla
-        igual que un ítem normal de la cola (mismo patrón que
-        `_run_shares_configuration`)."""
+        `app/appshell_config_apply.py`), en dos partes independientes:
+
+        - ATB/BTP/DCP marcados: agregan su puerto COM y su identificador al
+          INI de configuración de AppShell (`apply_appshell_device_config`).
+        - BGR/OCR marcados: crean o actualizan `Mastcom.xml` con su sesión
+          correspondiente (`apply_appshell_mastcom_config`).
+
+        Si alguna de las dos partes falla (o ninguna casilla del submenú
+        está marcada), se refleja como error en la casilla, igual que
+        cualquier fallo de instalación normal -- pero solo se resetean
+        (desmarcan) las opciones que SÍ llegaron a aplicarse con éxito
+        antes del fallo, para que un reintento no las vuelva a aplicar (y
+        así duplicar valores ya agregados); las que no se alcanzaron a
+        aplicar quedan marcadas, listas para reintentar."""
         item, checkbox = appshell_entry
         checkbox.setProperty("installing", "true")
         checkbox.style().unpolish(checkbox)
         checkbox.style().polish(checkbox)
         self.status_label.setText("Aplicando configuración de AppShell...")
 
-        selected_devices = [
-            name
-            for name in ("ATB", "BTP", "DCP")
-            if self.appshell_config_panel.device_checks[name].isChecked()
-        ]
+        device_checks = self.appshell_config_panel.device_checks
+        selected_ini_devices = [name for name in ("ATB", "BTP", "DCP") if device_checks[name].isChecked()]
+        selected_mastcom_options = [name for name in ("BGR", "OCR") if device_checks[name].isChecked()]
 
-        try:
-            detail = apply_appshell_device_config(selected_devices)
-        except AppShellConfigError as exc:
+        if not selected_ini_devices and not selected_mastcom_options:
             self._results["error"] += 1
             checkbox.setProperty("installing", "false")
             checkbox.setProperty("failed", "true")
             checkbox.setChecked(False)
-            checkbox.setToolTip(f"Error: {exc}")
+            checkbox.setToolTip("Error: No hay ninguna opción de DEVICE's (ATB/BTP/DCP/BGR/OCR) seleccionada.")
             checkbox.style().unpolish(checkbox)
             checkbox.style().polish(checkbox)
-            self.status_label.setText(f"AppShell Configuracion: error - {exc}")
+            self.status_label.setText(
+                "AppShell Configuracion: error - No hay ninguna opción de DEVICE's seleccionada."
+            )
             return
 
+        applied_names: list[str] = []
+        details: list[str] = []
+        error: AppShellConfigError | None = None
+        try:
+            if selected_ini_devices:
+                details.append(apply_appshell_device_config(selected_ini_devices))
+                applied_names.extend(selected_ini_devices)
+            if selected_mastcom_options:
+                details.append(apply_appshell_mastcom_config(selected_mastcom_options))
+                applied_names.extend(selected_mastcom_options)
+        except AppShellConfigError as exc:
+            error = exc
+
+        if error is not None:
+            self._results["error"] += 1
+            if applied_names:
+                self.appshell_config_panel.reset_device_checks(applied_names)
+            checkbox.setProperty("installing", "false")
+            checkbox.setProperty("failed", "true")
+            checkbox.setChecked(False)
+            checkbox.setToolTip(f"Error: {error}")
+            checkbox.style().unpolish(checkbox)
+            checkbox.style().polish(checkbox)
+            self.status_label.setText(f"AppShell Configuracion: error - {error}")
+            return
+
+        detail = " | ".join(details)
         self._results["ok"] += 1
         self._install_records.append((item.label, item.version, datetime.now()))
         checkbox.setProperty("installing", "false")
@@ -496,11 +534,10 @@ class LtpCssWindow(QMainWindow):
         self.status_label.setText(f"AppShell Configuracion aplicada ({detail}).")
 
         # Con la casilla ya oculta, el panel tampoco debe seguir viéndose.
-        # ATB/BTP/DCP se desmarcan para que una corrida posterior no vuelva
-        # a agregar el mismo puerto/id (la lógica de aplicación agrega con
-        # coma, no reemplaza -- ver `apply_appshell_device_config`).
+        # Las opciones aplicadas se desmarcan para que una corrida
+        # posterior no vuelva a aplicarlas (ver docstring del método).
         self.appshell_config_panel.setVisible(False)
-        self.appshell_config_panel.reset_device_checks(selected_devices)
+        self.appshell_config_panel.reset_device_checks(applied_names)
 
     # --------------------------------------------------------- señales cola
     def _on_item_started(self, item_id: str) -> None:

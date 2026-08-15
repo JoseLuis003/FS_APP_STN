@@ -3,29 +3,28 @@ de LTP / CSS: se muestra u oculta según el checkbox del mismo nombre (ver
 `LtpCssWindow._build_ui`, mismo mecanismo que ya usa `SharesConfigPanel`
 para "Shares Configuracion").
 
-Despliega el submenú DEVICE's con 6 casillas (ATB, BTP, DCP, BGR, OCR,
-BGR-OCR). ATB, BTP y DCP tienen lógica propia (ver
-`app/appshell_config_apply.py`): al presionar INSTALAR, cada una marcada
-agrega su puerto COM y su identificador al archivo INI de configuración de
-AppShell. BGR, OCR y BGR-OCR todavía no tienen ninguna lógica definida --
-son casillas inertes hasta que se especifique qué deben hacer."""
+Despliega el submenú DEVICE's con 5 casillas (ATB, BTP, DCP, BGR, OCR).
+Las 5 tienen lógica propia (ver `app/appshell_config_apply.py`): al
+presionar INSTALAR, ATB/BTP/DCP marcados agregan su puerto COM y su
+identificador al INI de configuración de AppShell, y BGR/OCR marcados
+crean o actualizan el archivo Mastcom.xml con su sesión correspondiente."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QGroupBox, QHBoxLayout, QWidget
 
-# Nombres de las 6 opciones, en el mismo orden y disposición que la imagen
+# Nombres de las 5 opciones, en el mismo orden y disposición que la imagen
 # de referencia: 3 filas con 2 columnas (equipo individual a la izquierda,
-# BGR/OCR/BGR-OCR a la derecha).
+# BGR/OCR a la derecha). La fila de DCP no tiene pareja a la derecha (ya
+# no existe "BGR-OCR" -- se eliminó, no hacía falta).
 _DEVICE_PAIRS = [
     ("ATB", "BGR"),
     ("BTP", "OCR"),
-    ("DCP", "BGR-OCR"),
+    ("DCP", None),
 ]
 
 # Nombres de las casillas con lógica de aplicación propia (ver
-# app/appshell_config_apply.py). El resto (BGR, OCR, BGR-OCR) son inertes
-# por ahora.
-DEVICE_NAMES_WITH_LOGIC = ["ATB", "BTP", "DCP"]
+# app/appshell_config_apply.py). Actualmente las 5 la tienen.
+DEVICE_NAMES_WITH_LOGIC = ["ATB", "BTP", "DCP", "BGR", "OCR"]
 
 
 class AppShellConfigPanel(QWidget):
@@ -44,17 +43,18 @@ class AppShellConfigPanel(QWidget):
         devices_layout.setVerticalSpacing(6)
         devices_layout.setHorizontalSpacing(24)
 
-        # item_id (ej. "ATB", "BGR-OCR") -> QCheckBox
+        # item_id (ej. "ATB", "BGR") -> QCheckBox
         self.device_checks: dict[str, QCheckBox] = {}
 
         grid_row = 0
         for left_name, right_name in _DEVICE_PAIRS:
             left_check = QCheckBox(left_name)
-            right_check = QCheckBox(right_name)
             devices_layout.addWidget(left_check, grid_row, 0)
-            devices_layout.addWidget(right_check, grid_row, 1)
             self.device_checks[left_name] = left_check
-            self.device_checks[right_name] = right_check
+            if right_name is not None:
+                right_check = QCheckBox(right_name)
+                devices_layout.addWidget(right_check, grid_row, 1)
+                self.device_checks[right_name] = right_check
             grid_row += 1
 
         row.addWidget(devices_box)
@@ -64,10 +64,10 @@ class AppShellConfigPanel(QWidget):
         """Desmarca las casillas indicadas (por nombre, ej. "ATB"). Se usa
         después de aplicar exitosamente la configuración de AppShell, para
         evitar que una casilla marcada siga presente en un INSTALAR
-        posterior y duplique valores ya agregados al INI (ver
-        `apply_appshell_device_config`, que agrega con coma sin espacio si
-        ya existe un valor -- una casilla no reseteada agregaría el mismo
-        puerto/id dos veces)."""
+        posterior y duplique valores ya agregados (ver
+        `apply_appshell_device_config` / `apply_appshell_mastcom_config`,
+        que agregan sin reemplazar lo existente -- una casilla no reseteada
+        aplicaría el mismo cambio dos veces)."""
         for name in names:
             checkbox = self.device_checks.get(name)
             if checkbox is not None:

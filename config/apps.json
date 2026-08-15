@@ -32,7 +32,8 @@
             { "id": "registro_ad",      "label": "REGISTRO EN AD",            "installer": "Scripts/WindowsTH-KB2693643-x64.msu", "silent_args": "/quiet /norestart",         "installer_type": "msu", "default_checked": false, "enabled": true, "version": "N/D",
               "extra_steps": [ { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" } ] },
             { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "Scripts/Shortcut STN.bat",     "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         },
         {

@@ -10,8 +10,7 @@ Trae tres secciones, tal como en la pantalla original:
   nombre, y no permite escribir más de 3 caracteres), los 4 campos LNIATA
   (casilla + campo alfanumérico limitado a 6 caracteres, para evitar
   errores de tecleo) y CONTINGENCIA (solo casilla, sin campo).
-- DEVICES: BGR, OCR (WGE queda deshabilitado por ahora, como en la imagen
-  de referencia).
+- DEVICES: BGR, OCR (WGE no se ofrece — no hace falta en esta pantalla).
 - CRT's: 2, 4.
 
 Cada campo de texto solo se puede editar mientras su casilla esté marcada
@@ -132,9 +131,7 @@ class SharesConfigPanel(QWidget):
         devices_layout = QVBoxLayout(devices_box)
         self.bgr_check = QCheckBox("BGR")
         self.ocr_check = QCheckBox("OCR")
-        self.wge_check = QCheckBox("WGE")
-        self.wge_check.setEnabled(False)  # todavía no disponible
-        for cb in (self.bgr_check, self.ocr_check, self.wge_check):
+        for cb in (self.bgr_check, self.ocr_check):
             devices_layout.addWidget(cb)
         devices_layout.addStretch(1)
         row.addWidget(devices_box)

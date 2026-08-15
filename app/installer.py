@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 from app.appshell_post_install import run_appshell_post_install
 from app.config import AppItem, LOGS_DIR
 from app.shares_setup import run_ltp_shares_post_install
+from app.windows_activation import run_windows_activation
 
 # Códigos de salida que se consideran éxito además de 0.
 # 3010 = éxito, requiere reinicio (común en instaladores MSI / Windows Update).
@@ -79,6 +80,7 @@ def _python_step_handlers() -> dict:
     return {
         "ltp_shares_post_install": run_ltp_shares_post_install,
         "appshell_post_install": run_appshell_post_install,
+        "windows_activation": run_windows_activation,
     }
 
 

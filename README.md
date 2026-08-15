@@ -62,6 +62,36 @@ DOMINIO").
 - El nombre y la versión que se ven en cada checkbox y en el reporte salen
   del campo `label`/`version` de `config/apps.json`.
 
+### Activar Windows (`app/windows_activation.py`)
+
+En la segunda columna del catálogo APPS, junto a los demás scripts de
+puesta a punto (BackGround, AJUSTES NECESARIOS, REGISTRO EN AD,
+Shortcuts, Manage Engine). Es un ítem `installer_type: "python"` (igual
+que "Shares 5.0" o "AppShell Configuracion"): no apunta a un archivo, sino
+a una función registrada en `app/installer.py` (`run_windows_activation`).
+Porta el botón "Activador de Windows" del VB.NET original:
+
+1. Verifica que el equipo esté unido a un dominio (`is_domain_joined()`,
+   vía PowerShell — `Get-CimInstance Win32_ComputerSystem` ->
+   `PartOfDomain`). Si NO lo está, se marca como error en la casilla con
+   un mensaje explicando que la licencia por volumen de Copa solo aplica a
+   equipos unidos al dominio `copaair.com` — a diferencia del VB.NET
+   original, que en ese caso cerraba toda la aplicación
+   (`Application.Exit()`), acá el resto del catálogo sigue disponible con
+   normalidad.
+2. Si está unido, configura la clave de producto y activa Windows contra
+   el KMS interno de Copa, invocando `Scripts\slmgr.vbs` (dentro de la
+   carpeta de instaladores) con `cscript //nologo` — primero
+   `/ipk <clave>`, después `/ato`. Se usa `cscript`, no `wscript`, para que
+   la salida de `slmgr.vbs` quede como texto normal (log/mensaje de error)
+   en vez de aparecer como cuadros de diálogo emergentes.
+
+Si `/ipk` falla, `/ato` nunca se intenta. Si cualquiera de los dos pasos
+de `slmgr.vbs` termina con un código de salida distinto de 0, el mensaje
+de error incluye la salida real del script (por ejemplo, el motivo por el
+que rechazó la clave, o que no pudo contactar al KMS interno), para que el
+técnico vea la causa concreta en vez de un mensaje genérico.
+
 ## Editar, actualizar o eliminar una aplicación del catálogo (sin tocar JSON a mano)
 
 AJUSTES → "Editar versiones de las aplicaciones..." abre una tabla con
@@ -219,8 +249,8 @@ identifican al equipo y no cambian entre corridas. Si CONTINGENCIA falla
 marcada y el resto del panel se comporta igual que cualquier otro error de
 esta acción.
 
-Las secciones **DEVICES** (BGR, OCR — WGE deshabilitado por ahora) y
-**CRT's** (2, 4) activan flags directamente en `LTPCMUDF.INF` (ver más
+Las secciones **DEVICES** (BGR, OCR) y **CRT's** (2, 4) activan flags
+directamente en `LTPCMUDF.INF` (ver más
 abajo), portadas del VB.NET original con 3 decisiones de diseño: solo se
 usa la ruta moderna basada en CIUDAD (se descartó el fallback legado
 `C:\LTP\AppDatCM\CNT - Copy\UDF` que traía el VB.NET), cualquier línea
@@ -637,6 +667,7 @@ FS_APP_STN/
 │   ├── appshell_config_apply.py # edita el INI (ATB/BTP/DCP) y Mastcom.xml (BGR/OCR) de "AppShell Configuracion"
 │   ├── appshell_post_install.py # paso post-instalación de AppShell 4.00.0030 (reemplaza "CSS permision.bat")
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
+│   ├── windows_activation.py  # "Activar Windows" (APPS, 2da columna): valida dominio + slmgr.vbs /ipk /ato
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
 │       ├── home_window.py    # portada (FS APP PORTABLE): APPS / LTP-CSS / DOMINIO

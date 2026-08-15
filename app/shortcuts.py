@@ -22,6 +22,7 @@ entorno al arrancar, no el acceso directo ni quien lo crea.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 # Carpeta del escritorio público -- visible para cualquier usuario del
@@ -115,3 +116,222 @@ def create_ltp_shares_shortcuts(ciudad: str, public_desktop: Path = PUBLIC_DESKT
         created.append(str(shortcut_path))
 
     return f"Accesos directos creados: {', '.join(created)}"
+
+
+# --------------------------------------------------------------------------
+# "Shortcuts" del catálogo APPS (2da columna, id `shortcuts`), portado de
+# `Scripts\Shortcut STN.bat`. A diferencia de los accesos directos de
+# Shares de arriba (que se ARMAN vía COM, con el valor de CIUDAD resuelto
+# en sus argumentos), estos ya vienen armados de antemano dentro de la
+# carpeta de instaladores -- este paso solo los COPIA, igual que
+# `app/appshell_post_install.py` hace con los 2 accesos directos de
+# AppShell.
+# --------------------------------------------------------------------------
+
+# Carpeta de instaladores (relativa a `installers_base_path`) donde vive
+# todo lo que copia este paso.
+STN_SOURCE_DIR_REL = "Scripts"
+
+# Dentro de esa carpeta: una subcarpeta con recursos compartidos que se
+# copian tal cual a `C:\copaair` (no son accesos directos -- ej. archivos
+# de configuración/recursos que otras apps de esa carpeta esperan
+# encontrar ahí), y otra con los accesos directos en sí.
+STN_COPAAIR_SUBDIR = "Copaair"
+STN_SHORTCUTS_SUBDIR = "Shortcut"
+
+# Carpeta destino de la copia de "Copaair" -- FUERA de Public Desktop,
+# directo en la raíz de C:.
+COPAAIR_DEST_DIR = Path(r"C:\copaair")
+
+# Accesos directos que se copian a Public Desktop, en el mismo orden que
+# el .bat original (algunos ".lnk", dos ".url" -- Excel y Word, que en
+# este equipo apuntan a atajos web en vez de a la app de escritorio).
+STN_SHORTCUT_FILES = [
+    "WorldTracer.lnk",
+    "AIMS.lnk",
+    "COPA ACADEMY.lnk",
+    "CORREO WEB.lnk",
+    "LOPA.lnk",
+    "RED.lnk",
+    "SABRE.lnk",
+    "Flight Radar24.lnk",
+    "EXCEL.url",
+    "WORD.url",
+]
+
+
+def _copy_folder_and_shortcuts(
+    installers_base_path: str,
+    source_dir_rel: str,
+    copaair_subdir: str,
+    shortcuts_subdir: str,
+    shortcut_files: list[str],
+    public_desktop: Path,
+    copaair_dest_dir: Path,
+) -> str:
+    """Generaliza el patrón común a "Shortcuts" (`Scripts\\Shortcut STN.bat`)
+    y "ShortCut-MTO" (`MTO\\ShortCut_MTO.bat`): copia una carpeta `Copaair`
+    (recursiva, con subcarpetas) a `copaair_dest_dir`, y después una lista
+    de accesos directos ya armados a `public_desktop`. `shortcuts_subdir`
+    puede ser `""` si los accesos directos viven sueltos directo en
+    `source_dir_rel` (caso MTO) en vez de en una subcarpeta propia (caso
+    STN, que los tiene en una subcarpeta "Shortcut").
+
+    Siempre sobrescribe -- ninguno de los 2 `.bat` originales pasaba `/Y`
+    en los `xcopy` de los accesos directos individuales (así que en teoría
+    preguntaban antes de sobrescribir); acá se sobrescribe sin preguntar,
+    sin cambio de comportamiento real ya que un `xcopy` sin entrada
+    interactiva disponible nunca llegaba a sobrescribir nada de todos
+    modos.
+
+    Lanza `ShortcutError` si la carpeta `Copaair` o alguno de los accesos
+    directos no aparece donde se espera, o si alguna copia falla."""
+    source_dir = Path(installers_base_path) / source_dir_rel
+    copaair_src = source_dir / copaair_subdir
+    shortcuts_src = source_dir / shortcuts_subdir if shortcuts_subdir else source_dir
+    public_desktop = Path(public_desktop)
+    copaair_dest_dir = Path(copaair_dest_dir)
+
+    if not copaair_src.exists():
+        raise ShortcutError(f"No se encontró la carpeta '{copaair_src}'.")
+    try:
+        shutil.copytree(copaair_src, copaair_dest_dir, dirs_exist_ok=True)
+    except OSError as exc:
+        raise ShortcutError(f"No se pudo copiar '{copaair_src}' a '{copaair_dest_dir}': {exc}")
+
+    if not shortcuts_src.exists():
+        raise ShortcutError(f"No se encontró la carpeta de accesos directos '{shortcuts_src}'.")
+    public_desktop.mkdir(parents=True, exist_ok=True)
+
+    copied: list[str] = []
+    for name in shortcut_files:
+        source_file = shortcuts_src / name
+        if not source_file.exists():
+            raise ShortcutError(f"No se encontró el acceso directo '{source_file}'.")
+        try:
+            shutil.copy2(source_file, public_desktop / name)
+        except OSError as exc:
+            raise ShortcutError(f"No se pudo copiar el acceso directo '{source_file}': {exc}")
+        copied.append(name)
+
+    return f"Copaair copiado a {copaair_dest_dir}; {len(copied)} acceso(s) directo(s) copiados a {public_desktop}"
+
+
+def copy_stn_assets_and_shortcuts(
+    installers_base_path: str,
+    public_desktop: Path = PUBLIC_DESKTOP,
+    copaair_dest_dir: Path = COPAAIR_DEST_DIR,
+) -> str:
+    """Copia la carpeta `Copaair` (dentro de `Scripts\\`) y los 10 accesos
+    directos de `STN_SHORTCUT_FILES` (dentro de `Scripts\\Shortcut\\`).
+    Ver `_copy_folder_and_shortcuts()`."""
+    return _copy_folder_and_shortcuts(
+        installers_base_path,
+        STN_SOURCE_DIR_REL,
+        STN_COPAAIR_SUBDIR,
+        STN_SHORTCUTS_SUBDIR,
+        STN_SHORTCUT_FILES,
+        public_desktop,
+        copaair_dest_dir,
+    )
+
+
+# --------------------------------------------------------------------------
+# "ShortCut-MTO" del catálogo APPS (3ra columna, id `shortcut_mto`),
+# portado de `MTO\ShortCut_MTO.bat`. Mismo patrón que "Shortcuts" (STN)
+# arriba, pero con su PROPIA carpeta `Copaair` (distinta de la de
+# `Scripts\Copaair` -- son 2 carpetas separadas, cada una junto a su
+# propio `.bat` original) y sus accesos directos sueltos directo en `MTO\`
+# (sin una subcarpeta "Shortcut" propia, a diferencia de STN).
+# --------------------------------------------------------------------------
+
+MTO_SOURCE_DIR_REL = "MTO"
+MTO_COPAAIR_SUBDIR = "Copaair"
+
+MTO_SHORTCUT_FILES = [
+    "MXI.lnk",
+    "ToolBox Remote.url",
+    "TOOLBOX.lnk",
+]
+
+
+def copy_mto_assets_and_shortcuts(
+    installers_base_path: str,
+    public_desktop: Path = PUBLIC_DESKTOP,
+    copaair_dest_dir: Path = COPAAIR_DEST_DIR,
+) -> str:
+    """Copia la carpeta `Copaair` (dentro de `MTO\\`) y los 3 accesos
+    directos de `MTO_SHORTCUT_FILES` (sueltos directo en `MTO\\`, sin
+    subcarpeta). Ver `_copy_folder_and_shortcuts()`."""
+    return _copy_folder_and_shortcuts(
+        installers_base_path,
+        MTO_SOURCE_DIR_REL,
+        MTO_COPAAIR_SUBDIR,
+        "",
+        MTO_SHORTCUT_FILES,
+        public_desktop,
+        copaair_dest_dir,
+    )
+
+
+# --------------------------------------------------------------------------
+# Paso extra de "BFirst" del catálogo APPS (2da columna, id `bfirst`),
+# portado de `BFirst\copy.bat`. A diferencia de los 2 casos de arriba (que
+# copian una carpeta `Copaair` entera, de forma recursiva), acá el origen
+# no es una carpeta -- es un único archivo de ícono suelto en `BFirst\`.
+# El `.bat` original usaba `xcopy /S /I /E /Y` sobre ese archivo suelto:
+# como el origen no es un directorio, `/S` y `/E` (recursivos) no tienen
+# ningún efecto real -- lo único que importa es `/I` (crea `C:\Copaair`
+# como carpeta si no existe, en vez de preguntar si el destino es archivo
+# o carpeta) y `/Y` (sobrescribe sin preguntar). El segundo `xcopy` (el
+# acceso directo `BFIRST.url` a Public Desktop) tampoco pasaba `/Y` en el
+# original -- mismo caso sin efecto real que STN/MTO arriba.
+# --------------------------------------------------------------------------
+
+BFIRST_SOURCE_DIR_REL = "BFirst"
+BFIRST_ICON_NAME = "bytemaster_logoprincipalqqq.ico"
+BFIRST_SHORTCUT_NAME = "BFIRST.url"
+
+
+def copy_bfirst_assets_and_shortcut(
+    installers_base_path: str,
+    public_desktop: Path = PUBLIC_DESKTOP,
+    copaair_dest_dir: Path = COPAAIR_DEST_DIR,
+) -> str:
+    """Portado de `BFirst\\copy.bat`: copia el ícono
+    `bytemaster_logoprincipalqqq.ico` a `C:\\copaair` (crea la carpeta si
+    no existe) y el acceso directo `BFIRST.url` a
+    `C:\\Users\\Public\\Desktop`. Comparte destino con
+    `copy_stn_assets_and_shortcuts()`/`copy_mto_assets_and_shortcuts()`
+    (ambas también dejan cosas en `C:\\copaair`), pero el origen acá es un
+    único archivo, no una carpeta -- por eso no reutiliza
+    `_copy_folder_and_shortcuts()`.
+
+    Devuelve un mensaje corto de éxito con ambos destinos. Lanza
+    `ShortcutError` si falta el ícono o el acceso directo de origen, o si
+    alguna copia falla."""
+    source_dir = Path(installers_base_path) / BFIRST_SOURCE_DIR_REL
+    public_desktop = Path(public_desktop)
+    copaair_dest_dir = Path(copaair_dest_dir)
+
+    icon_src = source_dir / BFIRST_ICON_NAME
+    if not icon_src.exists():
+        raise ShortcutError(f"No se encontró el ícono '{icon_src}'.")
+    copaair_dest_dir.mkdir(parents=True, exist_ok=True)
+    icon_dst = copaair_dest_dir / BFIRST_ICON_NAME
+    try:
+        shutil.copy2(icon_src, icon_dst)
+    except OSError as exc:
+        raise ShortcutError(f"No se pudo copiar '{icon_src}' a '{icon_dst}': {exc}")
+
+    shortcut_src = source_dir / BFIRST_SHORTCUT_NAME
+    if not shortcut_src.exists():
+        raise ShortcutError(f"No se encontró el acceso directo '{shortcut_src}'.")
+    public_desktop.mkdir(parents=True, exist_ok=True)
+    shortcut_dst = public_desktop / BFIRST_SHORTCUT_NAME
+    try:
+        shutil.copy2(shortcut_src, shortcut_dst)
+    except OSError as exc:
+        raise ShortcutError(f"No se pudo copiar el acceso directo '{shortcut_src}': {exc}")
+
+    return f"Ícono copiado a {icon_dst}; acceso directo copiado a {shortcut_dst}"

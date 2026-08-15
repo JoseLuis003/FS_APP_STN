@@ -6,7 +6,7 @@
         {
           "items": [
             { "id": "bginfo",            "label": "BGInfo",                    "installer": "BGinfo/BGTool.exe",            "silent_args": "/accepteula",                     "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D",
-              "extra_steps": [ { "installer": "BGinfo/bginfo.bat", "silent_args": "", "installer_type": "script" } ] },
+              "extra_steps": [ { "installer": "bginfo_registration", "silent_args": "", "installer_type": "python" } ] },
             { "id": "dell_command",      "label": "DELL Command Update",       "installer": "DellCommandUpdate/Dell-Command-Update-Windows-Universal-Application_P0P70_WIN64_5.7.1_A00.EXE", "silent_args": "/s", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "5.7.1" },
             { "id": "dell_optimizer",    "label": "DELL Optimizer",            "installer": "DellOptimizer/Dell-Optimizer-Application_5N4CV_WIN64_6.3.4.0_A00.EXE", "silent_args": "/s", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "6.3.4.0" },
             { "id": "dell_ownertag",     "label": "DELL OwnerTag",             "installer": "Dell_Owner_Tag/DELL_Owner_Tag_x64.exe", "silent_args": "/s",              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
@@ -26,12 +26,12 @@
         {
           "items": [
             { "id": "anyconnect",        "label": "VPN",                       "installer": "VPN/cisco-secure-client-win-5.1.10.233-core-vpn-predeploy-k9.msi", "silent_args": "/passive", "installer_type": "msi", "default_checked": false, "enabled": true, "version": "5.1.10.233",
-              "extra_steps": [ { "installer": "VPN/copy.bat", "silent_args": "", "installer_type": "script" } ] },
-            { "id": "background",       "label": "BackGround",                "installer": "Scripts/IMAGEN-STN/background.bat", "silent_args": "",                           "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "ajustes_necesarios","label": "AJUSTES NECESARIOS",        "installer": "Scripts/AJUSTES_NECESARIOS.bat", "silent_args": "",                              "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+              "extra_steps": [ { "installer": "vpn_setup", "silent_args": "", "installer_type": "python" } ] },
+            { "id": "background",       "label": "BackGround",                "installer": "branding_setup",               "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "ajustes_necesarios","label": "AJUSTES NECESARIOS",        "installer": "workstation_settings",         "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "registro_ad",      "label": "REGISTRO EN AD",            "installer": "Scripts/WindowsTH-KB2693643-x64.msu", "silent_args": "/quiet /norestart",         "installer_type": "msu", "default_checked": false, "enabled": true, "version": "N/D",
               "extra_steps": [ { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" } ] },
-            { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "Scripts/Shortcut STN.bat",     "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "stn_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
@@ -39,13 +39,13 @@
         {
           "items": [
             { "id": "bfirst",           "label": "BFirst",                    "installer": "BFirst/setupbolapp.exe",       "silent_args": "/S /v/qn",                        "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D",
-              "extra_steps": [ { "installer": "BFirst/copy.bat", "silent_args": "", "installer_type": "script" } ] },
+              "extra_steps": [ { "installer": "bfirst_assets", "silent_args": "", "installer_type": "python" } ] },
             { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/passive /norestart",       "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8",
               "extra_steps": [
                 { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/NoDlg /product=SAPGUI", "installer_type": "exe" },
                 { "installer": "SAP_GUI_7.80/parche 32 bits/GUI800_4-80006341.EXE", "silent_args": "/NoDlg", "installer_type": "exe" },
                 { "installer": "SAP_GUI_7.80/Win32/SAPSetupSLC.exe", "silent_args": "/noDLG", "installer_type": "exe" },
-                { "installer": "SAP_GUI_7.80/Win32/copy.bat", "silent_args": "", "installer_type": "script" }
+                { "installer": "sap_gui_setup", "silent_args": "", "installer_type": "python" }
               ] }
           ]
         }
@@ -58,7 +58,7 @@
             { "id": "isoview",          "label": "ISOView",                   "installer": "MTO/IGView-v7.1.0.28_IsoView-7.1.60.9D.exe", "silent_args": "",                  "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.1.60.9D" },
             { "id": "cortana",          "label": "Cortana",                   "installer": "MTO/cortona3d_x64.msi",        "silent_args": "/passive",                        "installer_type": "msi", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "toolbox_print",    "label": "Toolbox Print",             "installer": "MTO/Toolbox_QuickPrint_Control_2.23.0.5.msi", "silent_args": "/passive",          "installer_type": "msi", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "shortcut_mto",     "label": "ShortCut-MTO",              "installer": "MTO/ShortCut_MTO.bat",         "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "shortcut_mto",     "label": "ShortCut-MTO",              "installer": "mto_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         },
         {

@@ -92,6 +92,163 @@ de error incluye la salida real del script (por ejemplo, el motivo por el
 que rechazó la clave, o que no pudo contactar al KMS interno), para que el
 técnico vea la causa concreta en vez de un mensaje genérico.
 
+### BackGround (`app/branding_setup.py`)
+
+Ítem `installer_type: "python"` (`branding_setup`), portado de
+`Scripts\IMAGEN-STN\background.bat`. A pesar del nombre, no toca el fondo
+de pantalla del escritorio: deja configurado BGInfo (el resumen de datos
+del equipo superpuesto sobre el escritorio) y la imagen de la pantalla de
+bloqueo, con el branding de Copa. En orden: copia `CMINFO.bgi` a
+`C:\Windows\BGINFO\`, acepta el EULA de BGInfo y lo registra para que
+arranque con Windows (`HKLM\...\CurrentVersion\Run`), da control total
+(Everyone) a esa carpeta, copia `lockscreen.jpg` a
+`C:\Windows\Web\Screen\`, y configura esa imagen como pantalla de bloqueo
+vía `PersonalizationCSP`. A diferencia del `.bat` original (que nunca
+revisaba el código de salida de ningún paso), acá cualquier paso que
+falle detiene el resto y se marca como error.
+
+### Shortcuts (`app/shortcuts.py`, `copy_stn_assets_and_shortcuts`)
+
+Ítem `installer_type: "python"` (`stn_shortcuts`), portado de
+`Scripts\Shortcut STN.bat`. Copia la carpeta `Copaair` completa (recursiva,
+recursos compartidos con "AJUSTES NECESARIOS", ver abajo) a `C:\copaair`,
+y después 10 accesos directos ya armados (`.lnk`/`.url`: WorldTracer,
+AIMS, COPA ACADEMY, CORREO WEB, LOPA, RED, SABRE, Flight Radar24, EXCEL,
+WORD) al escritorio público. A diferencia de los accesos directos de
+Shares (que se arman dinámicamente vía COM, ver más abajo), estos ya
+vienen armados de antemano en la carpeta de instaladores — este paso solo
+los copia, igual que hace `app/appshell_post_install.py` con los accesos
+directos de AppShell. Siempre sobrescribe (el `.bat` original no pasaba
+`/Y` en estas copias puntuales, así que en teoría preguntaba antes de
+sobrescribir — sin efecto real en una instalación desatendida sin entrada
+interactiva disponible).
+
+### AJUSTES NECESARIOS (`app/workstation_settings.py`)
+
+Ítem `installer_type: "python"` (`workstation_settings`), portado de
+`Scripts\AJUSTES_NECESARIOS.bat` — **sin** un primer bloque de ~40 líneas
+que el `.bat` original tenía, que editaba claves de registro bajo
+prefijos `HKLM\TK_DEFAULT`/`TK_NTUSER`/`TK_SOFTWARE`/`TK_SYSTEM`
+(deshabilitando Windows Defender, Cortana e historial de búsqueda). Esos
+hives "TK_" no existen en una sesión normal de Windows a menos que algo
+los haya montado antes con `reg load` (cosa que ese `.bat` nunca hacía),
+así que esas ~40 líneas casi seguro fallaban en silencio (el `>nul 2>&1`
+al final de cada línea oculta el error) y nunca llegaron a aplicar nada —
+confirmado con el técnico como código muerto, y por eso no se portó.
+
+El resto del `.bat` sí se portó, con 2 tipos de pasos:
+
+- **Ajustes de preferencia** (Chrome, Edge, SysMain, apps en 2do plano,
+  transparencia de la barra de tareas, IPv6, Delivery Optimization): en
+  modo "mejor esfuerzo" — si alguno falla (ej. un servicio que no existe
+  en esa edición de Windows), se registra en el detalle de retorno y se
+  sigue con el resto, sin detener la acción completa. Igual que hacía el
+  `.bat` original (que nunca revisaba el código de salida de ninguno de
+  estos, y siempre terminaba con `Exit 0` sin importar qué falló).
+- **Pasos críticos** (copiar las 5 fotos de cuenta de usuario desde
+  `Copaair`, e importar la política de grupo local con `LGPO.exe /g
+  <backup>`, la herramienta oficial de Microsoft): a diferencia de los
+  ajustes de preferencia, estos SÍ detienen la acción y la marcan como
+  error si fallan — son la parte que de verdad configura algo, no una
+  preferencia de "mejor esfuerzo" sin impacto real si no se aplica.
+
+### BGInfo (`app/branding_setup.py`, `apply_bginfo_registration`)
+
+Paso extra (`installer_type: "python"`, `bginfo_registration`) del ítem
+`bginfo` (1ra columna), portado de `BGinfo\bginfo.bat`. A diferencia de
+"BackGround" arriba, este paso no copia ningún archivo: el instalador
+principal del ítem (`BGinfo/BGTool.exe`) ya deja `bginfo.exe` y
+`CMINFO.BGI` copiados en `C:\Windows\BGINFO` por su cuenta antes de que
+este paso corra. Solo faltan las mismas 2 claves de registro que usa
+"BackGround" (aceptar el EULA de BGInfo y registrarlo para que arranque
+con Windows), con una línea de comandos más simple que la de
+"BackGround" (`/timer:0`, sin `/SILENT /NOLICPROMPT` — así estaba en el
+`.bat` original). Cualquier `reg add` que falle lanza
+`BrandingSetupError` y detiene la acción, mismo criterio que el resto de
+la app.
+
+### ShortCut-MTO (`app/shortcuts.py`, `copy_mto_assets_and_shortcuts`)
+
+Ítem `installer_type: "python"` (`mto_shortcuts`), portado de
+`MTO\ShortCut_MTO.bat`. Misma idea que "Shortcuts" (STN) de arriba —
+copia una carpeta `Copaair` completa a `C:\copaair` y después unos
+accesos directos ya armados al escritorio público — pero usando la
+carpeta `Copaair` de `MTO\` (una carpeta distinta a la que usan
+"Shortcuts"/"AJUSTES NECESARIOS", aunque ambas copien al mismo destino
+`C:\copaair`) y solo 3 accesos directos (`MXI.lnk`, `ToolBox Remote.url`,
+`TOOLBOX.lnk`), que en este caso viven sueltos directo en `MTO\` en vez
+de en una subcarpeta propia como el caso STN. Ambos ítems comparten un
+helper privado común (`_copy_folder_and_shortcuts`) que solo cambia de
+carpeta origen y de si los accesos directos están o no en una
+subcarpeta.
+
+### BFirst (`app/shortcuts.py`, `copy_bfirst_assets_and_shortcut`)
+
+Paso extra (`installer_type: "python"`, `bfirst_assets`) del ítem
+`bfirst` (2da columna), portado de `BFirst\copy.bat`. A diferencia de
+"Shortcuts"/"ShortCut-MTO" de arriba (que copian una carpeta `Copaair`
+entera, de forma recursiva), acá el origen no es una carpeta: es un
+único archivo de ícono suelto (`bytemaster_logoprincipalqqq.ico`) que se
+copia a `C:\copaair` (creando la carpeta si no existe), y un único
+acceso directo (`BFIRST.url`) que se copia a Public Desktop. El `.bat`
+original usaba `xcopy /S /I /E /Y` para el ícono — como el origen es un
+archivo, no una carpeta, las banderas recursivas (`/S`/`/E`) no tenían
+ningún efecto real; lo único que importaba era `/I` (crear `C:\Copaair`
+si no existía) y `/Y` (sobrescribir sin preguntar), que es justamente lo
+que hace este paso.
+
+### SAP GUI 7.8 (`app/sap_gui_setup.py`)
+
+Paso extra (`installer_type: "python"`, `sap_gui_setup`), el ÚLTIMO de
+los 4 pasos extra del ítem `sap_gui` (después de `NwSapSetup.exe`, el
+parche `GUI800_4-80006341.EXE` y `SAPSetupSLC.exe`), portado de
+`SAP_GUI_7.80\Win32\copy.bat`. A diferencia de todos los pasos "python"
+anteriores (que trabajan sobre carpetas de sistema o Public Desktop),
+este toca el **perfil del usuario actual** (`C:\Users\<usuario>\...`,
+resuelto vía la variable de entorno `%USERNAME%`, igual que el `.bat`
+original):
+
+1. Crea `AppData\Roaming\SAP\Common` dentro del perfil del usuario.
+2. Copia `SAPUILandscape.xml` y `SAPUILandscapeGlobal.xml` (la
+   configuración de conexiones SAP con los servidores de Copa) a esa
+   carpeta.
+3. Borra `SAP Logon.lnk` del escritorio del usuario (el que arma el
+   propio instalador de SAP GUI ahí) — en modo "mejor esfuerzo": si no
+   existe, o no se puede borrar por algún motivo, no se considera un
+   error, igual que en el `.bat` original (que tampoco revisaba el
+   resultado de `del`).
+4. Copia el `SAP Logon.lnk` "oficial" (con branding de Copa) a Public
+   Desktop, para que se vea sin importar la cuenta con la que se entre
+   al equipo.
+
+Los pasos 1, 2 y 4 sí son fail-loud; solo el borrado del paso 3 es
+best-effort, por ser una limpieza cosmética sin impacto funcional si no
+se logra.
+
+### VPN (`app/vpn_setup.py`)
+
+Paso extra (`installer_type: "python"`, `vpn_setup`) del ítem
+`anyconnect` (2da columna, etiquetado "VPN"), portado de `VPN\copy.bat`.
+Deja lista la configuración de conexión de Cisco AnyConnect (rebautizado
+"Cisco Secure Client" en versiones recientes) después de instalar el
+`.msi` principal:
+
+1. Copia `preferences.xml` al perfil del usuario actual
+   (`AppData\Local\Cisco\Cisco AnyConnect Secure Mobility Client\`,
+   resuelto vía `%USERNAME%`, igual que "SAP GUI 7.8").
+2. Copia `preferences_global.xml` a
+   `C:\ProgramData\Cisco\Cisco AnyConnect Secure Mobility Client\`
+   (configuración a nivel de equipo, no de usuario).
+3. Copia la carpeta `Profile` completa (recursiva, con subcarpetas si
+   las tuviera) a `...\Profile\` dentro de esa misma carpeta de
+   ProgramData — a diferencia de los 2 archivos sueltos de arriba, acá
+   el origen sí es una carpeta.
+4. Copia el acceso directo `Cisco Secure Client.lnk` a Public Desktop.
+
+A diferencia de "SAP GUI 7.8" (que tenía un paso de limpieza
+best-effort), acá los 4 pasos son igual de necesarios para que la VPN
+funcione, así que los 4 son fail-loud.
+
 ## Editar, actualizar o eliminar una aplicación del catálogo (sin tocar JSON a mano)
 
 AJUSTES → "Editar versiones de las aplicaciones..." abre una tabla con
@@ -663,11 +820,13 @@ FS_APP_STN/
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   ├── shares_config_apply.py # renombra/edita los archivos de Shares (acción "Shares Configuracion")
 │   ├── shares_setup.py        # paso post-instalación de Shares 5.0 (port de "LTP setting.bat")
-│   ├── shortcuts.py           # crea los accesos directos de Shares en el escritorio público
+│   ├── shortcuts.py           # crea los accesos directos de Shares (COM) + copia los de "Shortcuts" (STN)
 │   ├── appshell_config_apply.py # edita el INI (ATB/BTP/DCP) y Mastcom.xml (BGR/OCR) de "AppShell Configuracion"
 │   ├── appshell_post_install.py # paso post-instalación de AppShell 4.00.0030 (reemplaza "CSS permision.bat")
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
 │   ├── windows_activation.py  # "Activar Windows" (APPS, 2da columna): valida dominio + slmgr.vbs /ipk /ato
+│   ├── branding_setup.py      # "BackGround" (APPS, 2da columna): BGInfo + pantalla de bloqueo (port de background.bat)
+│   ├── workstation_settings.py # "AJUSTES NECESARIOS" (APPS, 2da columna): Chrome/Edge/SysMain/IPv6/LGPO (port de AJUSTES_NECESARIOS.bat)
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
 │       ├── home_window.py    # portada (FS APP PORTABLE): APPS / LTP-CSS / DOMINIO

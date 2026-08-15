@@ -14,9 +14,18 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QThread, Signal
 
 from app.appshell_post_install import run_appshell_post_install
+from app.branding_setup import apply_bginfo_registration, apply_branding_setup
 from app.config import AppItem, LOGS_DIR
+from app.sap_gui_setup import apply_sap_gui_setup
 from app.shares_setup import run_ltp_shares_post_install
+from app.shortcuts import (
+    copy_bfirst_assets_and_shortcut,
+    copy_mto_assets_and_shortcuts,
+    copy_stn_assets_and_shortcuts,
+)
+from app.vpn_setup import apply_vpn_setup
 from app.windows_activation import run_windows_activation
+from app.workstation_settings import apply_workstation_settings
 
 # Códigos de salida que se consideran éxito además de 0.
 # 3010 = éxito, requiere reinicio (común en instaladores MSI / Windows Update).
@@ -81,6 +90,14 @@ def _python_step_handlers() -> dict:
         "ltp_shares_post_install": run_ltp_shares_post_install,
         "appshell_post_install": run_appshell_post_install,
         "windows_activation": run_windows_activation,
+        "branding_setup": apply_branding_setup,
+        "stn_shortcuts": copy_stn_assets_and_shortcuts,
+        "workstation_settings": apply_workstation_settings,
+        "bginfo_registration": apply_bginfo_registration,
+        "mto_shortcuts": copy_mto_assets_and_shortcuts,
+        "bfirst_assets": copy_bfirst_assets_and_shortcut,
+        "sap_gui_setup": apply_sap_gui_setup,
+        "vpn_setup": apply_vpn_setup,
     }
 
 

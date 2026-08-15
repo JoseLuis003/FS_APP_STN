@@ -230,8 +230,29 @@ class InstallWorker(QThread):
                 detail += " (requiere reinicio)"
             self.logger.write(f"{item.label}{step_tag}: {'OK' if success else 'FALLÓ'} ({detail})")
             if not success:
-                if result.stderr:
-                    self.logger.write(f"{item.label}: stderr -> {result.stderr.strip()[:500]}")
+                # Se registra tanto stderr como stdout (muchos instaladores
+                # de Windows -- sobre todo los que solo muestran una
+                # interfaz gráfica -- no escriben nada en stderr y el único
+                # detalle real, si lo hay, queda en stdout). Si los dos
+                # vienen vacíos, se deja explícito en el log que el
+                # instalador no dio ningún detalle además del código de
+                # salida -- así se sabe que no es que el log esté
+                # incompleto, sino que el instalador en sí no reportó nada
+                # más (en ese caso, para investigar qué significa ese
+                # código en particular hay que correrlo a mano con el
+                # switch de log propio del instalador, si tiene uno, o
+                # revisar la documentación del fabricante).
+                stderr_text = (result.stderr or "").strip()
+                stdout_text = (result.stdout or "").strip()
+                if stderr_text:
+                    self.logger.write(f"{item.label}: stderr -> {stderr_text[:500]}")
+                if stdout_text:
+                    self.logger.write(f"{item.label}: stdout -> {stdout_text[:500]}")
+                if not stderr_text and not stdout_text:
+                    self.logger.write(
+                        f"{item.label}: el instalador no escribió nada en stdout/stderr -- "
+                        f"el único detalle disponible es el código de salida {result.returncode}."
+                    )
                 self.finished_item.emit(item.id, False, f"{detail}{step_tag}")
                 return
             last_detail = detail

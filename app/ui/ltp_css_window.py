@@ -19,6 +19,16 @@ su casilla aparece el panel `SharesConfigPanel` (CIUDAD, HOSTNAME, LNIATA,
 etc.) y, al presionar INSTALAR, se aplica por separado con
 `app/shares_config_apply.py` en vez de mandarse al motor de instalación
 genérico.
+
+"AppShell Configuracion" (columna de AppShell) funciona con el mismo
+mecanismo de mostrar/ocultar un panel al marcar su casilla: al marcarla
+aparece `AppShellConfigPanel`, con el submenú DEVICE's (ATB, BTP, DCP,
+BGR, OCR, BGR-OCR, ATB-BTP, ATB-DCP, BTP-DCP, ATB-BTP-DCP). Por ahora,
+a diferencia de "Shares Configuracion", este ítem SÍ sigue yendo al motor
+de instalación genérico si se marca y se presiona INSTALAR (todavía no
+tiene una función de aplicación propia como `apply_shares_configuration`,
+porque qué debe hacer cada opción del submenú está pendiente de
+definirse) -- por ahora solo despliega el submenú.
 """
 from __future__ import annotations
 
@@ -81,6 +91,7 @@ from app.shares_config_apply import (
     run_contingencia_script,
 )
 from app.shortcuts import ShortcutError, create_ltp_shares_shortcuts
+from app.ui.appshell_config_panel import AppShellConfigPanel
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 from app.ui.main_window import SettingsDialog
 from app.ui.shares_config_panel import SharesConfigPanel
@@ -167,6 +178,18 @@ class LtpCssWindow(QMainWindow):
             _item, shares_checkbox = self.checkboxes["shares_configuracion"]
             shares_checkbox.toggled.connect(self.shares_config_panel.setVisible)
             self.shares_config_panel.setVisible(shares_checkbox.isChecked())
+
+        # Panel de "AppShell Configuracion": mismo mecanismo que el de
+        # arriba -- oculto por defecto, aparece con el submenú DEVICE's
+        # cuando se marca esa casilla. Por ahora solo despliega el
+        # submenú; qué debe hacer cada opción se programa más adelante.
+        self.appshell_config_panel = AppShellConfigPanel()
+        self.appshell_config_panel.setVisible(False)
+        scroll_layout.addWidget(self.appshell_config_panel)
+        if "appshell_configuracion" in self.checkboxes:
+            _item, appshell_checkbox = self.checkboxes["appshell_configuracion"]
+            appshell_checkbox.toggled.connect(self.appshell_config_panel.setVisible)
+            self.appshell_config_panel.setVisible(appshell_checkbox.isChecked())
 
         scroll_layout.addStretch(1)
 

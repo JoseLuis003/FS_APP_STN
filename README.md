@@ -328,6 +328,24 @@ instaladores, y en cambio se porta directo a código Python empaquetado
 dentro de la app, con su propio manejo de errores por paso en vez de
 depender de un único código de salida de todo un `.bat`.
 
+**Panel "AppShell Configuracion" (`app/ui/appshell_config_panel.py`):** al
+marcar la casilla "AppShell Configuracion" del catálogo (columna de
+AppShell) aparece debajo un panel con una sola sección, **DEVICE's**, con
+10 casillas simples e independientes entre sí (no son un grupo exclusivo):
+ATB, BTP, DCP, BGR, OCR, BGR-OCR, ATB-BTP, ATB-DCP, BTP-DCP y ATB-BTP-DCP.
+El panel desaparece si se vuelve a desmarcar la casilla — mismo mecanismo
+que "Shares Configuracion" (`SharesConfigPanel`), pero sin ninguna sección
+de campos de texto.
+
+A diferencia de "Shares Configuracion", por ahora **"AppShell
+Configuracion" sigue yendo al motor de instalación genérico** si se marca
+y se presiona INSTALAR — todavía no tiene su propia función de aplicación
+(como `apply_shares_configuration`), porque qué debe hacer cada una de las
+10 opciones del submenú está pendiente de definirse. Por ahora el panel
+solo sirve para desplegar esas opciones; una vez que se defina el
+comportamiento de cada una, se puede sacar del motor genérico y aplicar
+aparte, igual que se hizo con Shares Configuracion.
+
 **Nota:** los ítems del catálogo LTP / CSS (EPSON UTILITY, GEMALTO, 3M,
 DESKO, EPSON USB DRIVER, VIRTUAL PORT, BGR IER, CUSTOM, Shares 5.0 y
 AppShell 4.00.0030) ya tienen instaladores/switches/versiones reales en
@@ -335,9 +353,9 @@ AppShell 4.00.0030) ya tienen instaladores/switches/versiones reales en
 caso especial (ver más arriba) cuyo único trabajo es desplegar el panel de
 opciones LNIATA — su campo `installer` queda vacío a propósito, porque
 `LtpCssWindow._on_installar()` lo saca de la cola de instalación normal
-antes de llegar a usarlo. Solo **AppShell Configuracion** sigue con una
-ruta de ejemplo (placeholder) — hay que revisarla antes de usarla en
-producción.
+antes de llegar a usarlo. **AppShell Configuracion** sigue con una ruta de
+ejemplo (placeholder) en su campo `installer` — hay que revisarla (o
+definir su propia lógica, ver arriba) antes de usarla en producción.
 
 ## Reporte de instalación
 

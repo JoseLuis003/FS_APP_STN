@@ -334,10 +334,13 @@ Python del `.bat` que antes se corría a mano después de instalar Shares
    al reintentar la instalación en un equipo ya configurado antes), no se
    vuelve a copiar: además de innecesario, en ese estado Windows ya tiene
    esa fuente cargada/mapeada como fuente activa del sistema, y
-   `CopyFileW` no puede sobrescribirla (`WinError 1224: The requested
-   operation cannot be performed on a file with a user-mapped section
-   open`, también visto en un equipo real). Si aun así se llega a intentar
-   la copia y Windows devuelve justo ese error, se trata igual como "ya
+   `CopyFileW` no puede sobrescribirla — devuelve `WinError 1224` ("...a
+   file with a user-mapped section open") o, si es una fuente que Windows
+   ya trae de fábrica con el mismo nombre de archivo pero de otro tamaño
+   (como pasó con `ARIALN.TTF`/Arial Narrow, ya incluida en Windows 11),
+   `WinError 32` ("...being used by another process") — ambos vistos en
+   equipos reales. Si aun así se llega a intentar la copia y Windows
+   devuelve cualquiera de esos dos errores, se trata igual como "ya
    estaba instalada" en vez de como una falla.
 3. Importa `C:\LTP\Fonts\ALCFONXP.REG` con `regedit /s` (registra esas
    fuentes en Windows).

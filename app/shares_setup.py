@@ -131,12 +131,29 @@ def _win32_copy_file(src: Path, dst: Path) -> None:
         raise ctypes.WinError()
 
 
-# Código de error de Windows (WinError 1224) que devuelve CopyFileW cuando
-# el archivo destino ya está mapeado en memoria por el sistema -- típico
-# quando esa fuente ya quedó instalada (y por lo tanto ya está cargada
-# como fuente activa) en una corrida anterior de este mismo paso sobre el
-# mismo equipo. Ver el segundo `except` de `_copy_fonts()` más abajo.
+# Códigos de error de Windows que CopyFileW puede devolver cuando el
+# archivo destino ya existe y ya está en uso por el propio sistema como
+# fuente activa -- ver el segundo `except` de `_copy_fonts()` más abajo.
+#
+# - 1224 (ERROR_USER_MAPPED_FILE): el archivo ya está mapeado en memoria
+#   -- típico de una fuente propia (ej. ALCFONT.FON) que este mismo paso
+#   ya instaló en una corrida anterior sobre el mismo equipo.
+# - 32 (ERROR_SHARING_VIOLATION): "The process cannot access the file
+#   because it is being used by another process" -- visto en un equipo
+#   real al copiar ARIALN.TTF (Arial Narrow), una fuente que Windows 11 ya
+#   trae instalada de fábrica con ese mismo nombre de archivo; al ser una
+#   fuente del sistema en uso constante por GDI/DirectWrite, Windows la
+#   mantiene bloqueada de forma mucho más agresiva que una fuente propia
+#   poco usada como ALCFONT.FON, por eso da este otro código en vez de
+#   1224.
+#
+# En ambos casos el archivo ya existe y Windows ya lo está usando como
+# fuente -- en la práctica, la fuente ya está "instalada" (sea la nuestra
+# o una del propio Windows con el mismo nombre), así que no tiene sentido
+# frenar toda la instalación por esto.
 ERROR_USER_MAPPED_FILE = 1224
+ERROR_SHARING_VIOLATION = 32
+_FONT_IN_USE_WINERRORS = (ERROR_USER_MAPPED_FILE, ERROR_SHARING_VIOLATION)
 
 
 def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDOWS_FONTS_DIR) -> str:
@@ -152,17 +169,16 @@ def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDO
     que la de origen, no se vuelve a copiar -- se asume ya instalada (esto
     es lo normal al correr este paso más de una vez sobre el mismo
     equipo, por ejemplo al reintentar una instalación). Esto también evita
-    de raíz un error real visto en un equipo con Windows 11: si la fuente
-    ya está instalada, Windows la tiene mapeada en memoria como fuente
+    de raíz un problema real visto en equipos con Windows 11: si el
+    archivo destino ya existe, Windows puede tenerlo en uso como fuente
     activa del sistema, y `CopyFileW` no puede sobrescribir un archivo en
-    ese estado -- devuelve `WinError 1224` ("The requested operation
-    cannot be performed on a file with a user-mapped section open"). Como
-    red de seguridad adicional, si aun así se intenta copiar (por ejemplo,
-    porque el tamaño no coincide) y Windows devuelve justo ese error, se
-    trata como "ya estaba instalada" en vez de como una falla real -- ese
-    código de error específico solo ocurre cuando el archivo ya existe y
-    ya está en uso como fuente del sistema, lo cual en la práctica
-    significa que ya está instalada."""
+    ese estado -- devuelve `WinError 1224` o `WinError 32` según el caso
+    (ver `_FONT_IN_USE_WINERRORS` arriba). Como red de seguridad adicional,
+    si aun así se intenta copiar (por ejemplo, porque el tamaño no
+    coincide -- como pasó con ARIALN.TTF, donde Windows ya traía su propia
+    versión con un tamaño distinto) y Windows devuelve justo uno de esos
+    errores, se trata como "ya estaba instalada" en vez de como una falla
+    real."""
     if not fonts_src_dir.exists():
         raise SharesSetupError(f"No se encontró la carpeta de fuentes: {fonts_src_dir}")
 
@@ -176,7 +192,7 @@ def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDO
             try:
                 _win32_copy_file(font_file, dst_file)
             except OSError as exc:
-                if getattr(exc, "winerror", None) == ERROR_USER_MAPPED_FILE and dst_file.exists():
+                if getattr(exc, "winerror", None) in _FONT_IN_USE_WINERRORS and dst_file.exists():
                     copied.append(font_file.name)
                     continue
                 raise SharesSetupError(f"No se pudo copiar la fuente '{font_file}': {exc}")

@@ -7,7 +7,7 @@ DESKO en la pantalla LTP / CSS: son formas distintas de leer tarjetas, así
 que no tiene sentido instalar más de una a la vez)."""
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QVBoxLayout, QWidget
 
 from app.config import AppColumn, AppItem
 
@@ -15,6 +15,7 @@ from app.config import AppColumn, AppItem
 def build_checkbox_column(
     column: AppColumn,
     checkboxes: dict[str, tuple[AppItem, QCheckBox]],
+    inline_widgets: dict[str, QWidget] | None = None,
 ) -> QVBoxLayout:
     """Arma una columna de checkboxes a partir de un `AppColumn`, en el
     mismo orden en que aparecen sus ítems. Los ítems que comparten un mismo
@@ -22,7 +23,16 @@ def build_checkbox_column(
     horizontal la primera vez que aparece alguno de ellos, y quedan
     enlazados entre sí (ver `_wire_exclusive_group`). Los ítems ya
     encontrados/creados se registran en `checkboxes` (mutado in-place),
-    igual que hacía el código anterior en `MainWindow._build_column`."""
+    igual que hacía el código anterior en `MainWindow._build_column`.
+
+    `inline_widgets` (opcional): {item_id: widget} — si el id de un ítem
+    aparece acá, ese widget se agrega dentro de esta misma columna, justo
+    debajo de su checkbox (en vez de vivir aparte, más abajo, fuera de las
+    columnas). Pensado para paneles como `AppShellConfigPanel`, que deben
+    verse pegados a la casilla que los despliega. El llamador sigue
+    encargándose de mostrar/ocultar el widget (`setVisible`) según el
+    estado del checkbox -- esto solo decide DÓNDE se dibuja."""
+    inline_widgets = inline_widgets or {}
     col_layout = QVBoxLayout()
     col_layout.setSpacing(2)
 
@@ -58,12 +68,17 @@ def build_checkbox_column(
                 row_layout.addStretch(1)
                 col_layout.addLayout(row_layout)
                 _wire_exclusive_group(row_checkboxes)
+                for member in members_by_group[item.exclusive_group]:
+                    if member.id in inline_widgets:
+                        col_layout.addWidget(inline_widgets[member.id])
             else:
                 checkbox = QCheckBox(item.label)
                 checkbox.setChecked(item.default_checked)
                 checkbox.setEnabled(item.enabled)
                 checkboxes[item.id] = (item, checkbox)
                 col_layout.addWidget(checkbox)
+                if item.id in inline_widgets:
+                    col_layout.addWidget(inline_widgets[item.id])
 
     col_layout.addStretch(1)
     return col_layout

@@ -162,15 +162,34 @@ class LtpCssWindow(QMainWindow):
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
 
+        # Panel de "AppShell Configuracion": a diferencia del de "Shares
+        # Configuracion" (más abajo), este se arma ANTES de las columnas y
+        # se le pasa a `build_checkbox_column` como `inline_widgets` --
+        # así queda dibujado dentro de la columna de AppShell, justo debajo
+        # de esa casilla, en vez de aparte, más abajo, fuera de las
+        # columnas. Oculto por defecto; qué debe hacer cada opción del
+        # submenú se programa más adelante.
+        self.appshell_config_panel = AppShellConfigPanel()
+        self.appshell_config_panel.setVisible(False)
+        inline_widgets = {"appshell_configuracion": self.appshell_config_panel}
+
         columns_row = QHBoxLayout()
         columns_row.setSpacing(30)
         for column in self.columns:
-            columns_row.addLayout(build_checkbox_column(column, self.checkboxes))
+            columns_row.addLayout(build_checkbox_column(column, self.checkboxes, inline_widgets))
         columns_row.addStretch(1)
         scroll_layout.addLayout(columns_row)
 
-        # Panel de "Shares Configuracion": oculto por defecto, aparece
-        # cuando se marca esa casilla en el catálogo de arriba.
+        if "appshell_configuracion" in self.checkboxes:
+            _item, appshell_checkbox = self.checkboxes["appshell_configuracion"]
+            appshell_checkbox.toggled.connect(self.appshell_config_panel.setVisible)
+            self.appshell_config_panel.setVisible(appshell_checkbox.isChecked())
+
+        # Panel de "Shares Configuracion": este sí queda aparte, debajo de
+        # todas las columnas (tiene 3 secciones lado a lado -- SETTING's,
+        # DEVICES, CRT's -- que necesitan más ancho del que tiene una sola
+        # columna angosta). Oculto por defecto, aparece cuando se marca esa
+        # casilla en el catálogo de arriba.
         self.shares_config_panel = SharesConfigPanel()
         self.shares_config_panel.setVisible(False)
         scroll_layout.addWidget(self.shares_config_panel)
@@ -178,18 +197,6 @@ class LtpCssWindow(QMainWindow):
             _item, shares_checkbox = self.checkboxes["shares_configuracion"]
             shares_checkbox.toggled.connect(self.shares_config_panel.setVisible)
             self.shares_config_panel.setVisible(shares_checkbox.isChecked())
-
-        # Panel de "AppShell Configuracion": mismo mecanismo que el de
-        # arriba -- oculto por defecto, aparece con el submenú DEVICE's
-        # cuando se marca esa casilla. Por ahora solo despliega el
-        # submenú; qué debe hacer cada opción se programa más adelante.
-        self.appshell_config_panel = AppShellConfigPanel()
-        self.appshell_config_panel.setVisible(False)
-        scroll_layout.addWidget(self.appshell_config_panel)
-        if "appshell_configuracion" in self.checkboxes:
-            _item, appshell_checkbox = self.checkboxes["appshell_configuracion"]
-            appshell_checkbox.toggled.connect(self.appshell_config_panel.setVisible)
-            self.appshell_config_panel.setVisible(appshell_checkbox.isChecked())
 
         scroll_layout.addStretch(1)
 

@@ -18,7 +18,12 @@ from app.shares_setup import run_ltp_shares_post_install
 
 # Códigos de salida que se consideran éxito además de 0.
 # 3010 = éxito, requiere reinicio (común en instaladores MSI / Windows Update).
-SUCCESS_CODES = {0, 3010}
+# 1638 = ERROR_PRODUCT_VERSION, código estándar del Windows Installer: "ya
+# hay otra versión de este producto instalada" -- típico en paquetes
+# vcredist (Visual C++ Redistributable) cuando ya está presente una versión
+# igual o más nueva. No es un fallo real: no hay nada que instalar, así que
+# se trata como éxito en vez de detener la cola.
+SUCCESS_CODES = {0, 3010, 1638}
 
 # Detecta una ruta absoluta de Windows ("C:\..." / "C:/..." / "\\servidor\...")
 # sin depender de `Path.is_absolute()` -- esa función se comporta distinto
@@ -228,6 +233,8 @@ class InstallWorker(QThread):
             detail = f"código de salida {result.returncode}"
             if result.returncode == 3010:
                 detail += " (requiere reinicio)"
+            elif result.returncode == 1638:
+                detail += " (ya estaba instalado)"
             self.logger.write(f"{item.label}{step_tag}: {'OK' if success else 'FALLÓ'} ({detail})")
             if not success:
                 # Se registra tanto stderr como stdout (muchos instaladores

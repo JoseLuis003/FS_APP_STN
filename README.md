@@ -331,31 +331,56 @@ depender de un único código de salida de todo un `.bat`.
 **Panel "AppShell Configuracion" (`app/ui/appshell_config_panel.py`):** al
 marcar la casilla "AppShell Configuracion" del catálogo (columna de
 AppShell) aparece debajo un panel con una sola sección, **DEVICE's**, con
-10 casillas simples e independientes entre sí (no son un grupo exclusivo):
-ATB, BTP, DCP, BGR, OCR, BGR-OCR, ATB-BTP, ATB-DCP, BTP-DCP y ATB-BTP-DCP.
-El panel desaparece si se vuelve a desmarcar la casilla — mismo mecanismo
-que "Shares Configuracion" (`SharesConfigPanel`), pero sin ninguna sección
-de campos de texto.
+6 casillas simples e independientes entre sí (no son un grupo exclusivo):
+ATB, BTP, DCP, BGR, OCR y BGR-OCR. El panel desaparece si se vuelve a
+desmarcar la casilla — mismo mecanismo que "Shares Configuracion"
+(`SharesConfigPanel`), pero sin ninguna sección de campos de texto.
 
-A diferencia de "Shares Configuracion", por ahora **"AppShell
-Configuracion" sigue yendo al motor de instalación genérico** si se marca
-y se presiona INSTALAR — todavía no tiene su propia función de aplicación
-(como `apply_shares_configuration`), porque qué debe hacer cada una de las
-10 opciones del submenú está pendiente de definirse. Por ahora el panel
-solo sirve para desplegar esas opciones; una vez que se defina el
-comportamiento de cada una, se puede sacar del motor genérico y aplicar
-aparte, igual que se hizo con Shares Configuracion.
+Igual que "Shares Configuracion", **"AppShell Configuracion" NO pasa por
+el motor de instalación genérico**: al presionar INSTALAR,
+`LtpCssWindow._on_installar()` la saca de la cola normal y la aplica
+aparte con `app/appshell_config_apply.py`
+(`LtpCssWindow._run_appshell_configuration`). Solo ATB, BTP y DCP tienen
+lógica definida: por cada una que esté marcada, se agrega su puerto COM y
+su identificador al archivo INI de configuración de AppShell,
+
+    C:\Program Files (x86)\DXC Technology\PssAppShell\Configurations\PrintAgent_COPA_PROD.ini
+
+en dos líneas:
+
+- `device.comport=`: recibe el puerto COM del equipo (ATB → `COM7`, BTP →
+  `COM8`, DCP → `COM9`).
+- `device.list=`: recibe el identificador del equipo (ATB → `ATB1`, BTP →
+  `BTP1`, DCP → `DCP1`).
+
+Si la línea ya tiene algún valor después del `=` (de una corrida
+anterior, o de otro equipo aplicado en la misma corrida), el nuevo valor
+se agrega al final separado por una coma **sin espacio** (ej.
+`device.comport=COM7` pasa a `device.comport=COM7,COM8` al aplicar
+también BTP). Si no hay nada después del `=`, el valor se escribe
+directo, sin coma. Los tres equipos se procesan siempre en el mismo orden
+(ATB, BTP, DCP), sin importar en qué orden estén marcadas las casillas en
+pantalla. Al terminar con éxito, la casilla "AppShell Configuracion" y su
+panel se ocultan (igual que cualquier ítem completado), y las casillas
+ATB/BTP/DCP que se hayan aplicado se desmarcan automáticamente
+(`reset_device_checks`) — así una corrida posterior no vuelve a agregar
+el mismo puerto/identificador dos veces. Si el archivo INI no existe, o
+si falta alguna de las dos líneas esperadas, se lanza
+`AppShellConfigError` y la casilla se refleja como error (se desmarca,
+queda visible, con un tooltip con el detalle), igual que cualquier fallo
+de instalación normal.
+
+BGR, OCR y BGR-OCR todavía no tienen ninguna lógica definida — son
+casillas inertes: marcarlas no hace nada al presionar INSTALAR.
 
 **Nota:** los ítems del catálogo LTP / CSS (EPSON UTILITY, GEMALTO, 3M,
 DESKO, EPSON USB DRIVER, VIRTUAL PORT, BGR IER, CUSTOM, Shares 5.0 y
 AppShell 4.00.0030) ya tienen instaladores/switches/versiones reales en
-`ltp_css_apps.json`. **Shares Configuracion** no necesita ninguno: es un
-caso especial (ver más arriba) cuyo único trabajo es desplegar el panel de
-opciones LNIATA — su campo `installer` queda vacío a propósito, porque
-`LtpCssWindow._on_installar()` lo saca de la cola de instalación normal
-antes de llegar a usarlo. **AppShell Configuracion** sigue con una ruta de
-ejemplo (placeholder) en su campo `installer` — hay que revisarla (o
-definir su propia lógica, ver arriba) antes de usarla en producción.
+`ltp_css_apps.json`. **Shares Configuracion** y **AppShell Configuracion**
+no necesitan ninguno: son casos especiales (ver más arriba) cuyo único
+trabajo es desplegar sus paneles de opciones — su campo `installer` queda
+vacío a propósito en ambos, porque `LtpCssWindow._on_installar()` los saca
+de la cola de instalación normal antes de llegar a usarlo.
 
 ## Reporte de instalación
 
@@ -474,6 +499,7 @@ FS_APP_STN/
 │   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   ├── shares_config_apply.py # renombra/edita los archivos de Shares (acción "Shares Configuracion")
+│   ├── appshell_config_apply.py # edita el INI de AppShell (acción "AppShell Configuracion", ATB/BTP/DCP)
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)
@@ -481,6 +507,7 @@ FS_APP_STN/
 │       ├── main_window.py    # catálogo de instalación (botón APPS)
 │       ├── ltp_css_window.py # catálogo de instalación (botón LTP / CSS)
 │       ├── shares_config_panel.py # panel SETTING's/DEVICES/CRT's de "Shares Configuracion"
+│       ├── appshell_config_panel.py # panel DEVICE's (ATB/BTP/DCP/BGR/OCR/BGR-OCR) de "AppShell Configuracion"
 │       ├── dominio_window.py # pantalla de unión al dominio (botón DOMINIO)
 │       └── styles.py         # hoja de estilos (QSS)
 ├── scripts/
@@ -695,8 +722,13 @@ detecta automáticamente ahí (ver `app/config.py::get_app_root`).
 ## Logs
 
 Cada instalación queda registrada en `logs/install_YYYY-MM-DD.log` con
-hora, comando ejecutado y código de salida (0 y 3010 se consideran éxito;
-3010 = éxito con reinicio pendiente).
+hora, comando ejecutado y código de salida. Se consideran éxito los
+códigos 0, 3010 (éxito con reinicio pendiente) y 1638 (`ERROR_PRODUCT_VERSION`
+del Windows Installer: "ya hay otra versión de este producto instalada" —
+típico en paquetes vcredist cuando ya está presente una versión igual o
+más nueva; no es un fallo real, no hay nada que instalar). Cuando un paso
+falla, el log también registra stdout y stderr por separado (o aclara que
+el instalador no escribió nada en ninguno de los dos, si así fue).
 
 ## Próximos pasos sugeridos
 

@@ -23,12 +23,13 @@ genérico.
 "AppShell Configuracion" (columna de AppShell) funciona con el mismo
 mecanismo de mostrar/ocultar un panel al marcar su casilla: al marcarla
 aparece `AppShellConfigPanel`, con el submenú DEVICE's (ATB, BTP, DCP,
-BGR, OCR, BGR-OCR, ATB-BTP, ATB-DCP, BTP-DCP, ATB-BTP-DCP). Por ahora,
-a diferencia de "Shares Configuracion", este ítem SÍ sigue yendo al motor
-de instalación genérico si se marca y se presiona INSTALAR (todavía no
-tiene una función de aplicación propia como `apply_shares_configuration`,
-porque qué debe hacer cada opción del submenú está pendiente de
-definirse) -- por ahora solo despliega el submenú.
+BGR, OCR, BGR-OCR). Igual que "Shares Configuracion", este ítem NO pasa
+por el motor de instalación genérico: al presionar INSTALAR se separa de
+la cola normal y se aplica aparte con `app/appshell_config_apply.py`
+(ver `_run_appshell_configuration`). ATB, BTP y DCP marcados agregan su
+puerto COM y su identificador al INI de configuración de AppShell
+(`PrintAgent_COPA_PROD.ini`); BGR, OCR y BGR-OCR todavía no tienen ninguna
+lógica definida y no hacen nada al presionar INSTALAR.
 """
 from __future__ import annotations
 
@@ -82,6 +83,7 @@ def _initial_window_size() -> tuple[int, int]:
         height = min(height, max(available.height() - _SCREEN_MARGIN, 300))
     return width, height
 
+from app.appshell_config_apply import AppShellConfigError, apply_appshell_device_config
 from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
 from app.installer import InstallManager
 from app.shares_config_apply import (
@@ -334,6 +336,15 @@ class LtpCssWindow(QMainWindow):
         if apply_shares:
             selected = [it for it in selected if it is not shares_entry[0]]
 
+        # "AppShell Configuracion" tampoco es un instalador tradicional:
+        # igual que Shares Configuracion, se separa de la cola normal y se
+        # aplica aparte con los valores del submenú DEVICE's (ver
+        # `_run_appshell_configuration`).
+        appshell_entry = self.checkboxes.get("appshell_configuracion")
+        apply_appshell = appshell_entry is not None and appshell_entry[0] in selected
+        if apply_appshell:
+            selected = [it for it in selected if it is not appshell_entry[0]]
+
         if selected and not Path(self.settings.installers_base_path).exists():
             QMessageBox.critical(
                 self,
@@ -352,6 +363,9 @@ class LtpCssWindow(QMainWindow):
         if apply_shares:
             self._run_shares_configuration(shares_entry)
 
+        if apply_appshell:
+            self._run_appshell_configuration(appshell_entry)
+
         if selected:
             self.install_manager = InstallManager(self.settings.installers_base_path, self)
             self.install_manager.item_started.connect(self._on_item_started)
@@ -359,8 +373,9 @@ class LtpCssWindow(QMainWindow):
             self.install_manager.queue_finished.connect(self._on_queue_finished)
             self.install_manager.start(selected)
         else:
-            # Solo se había marcado Shares Configuracion: no queda nada
-            # más que mandar al motor de instalación normal.
+            # Solo se había marcado Shares Configuracion y/o AppShell
+            # Configuracion: no queda nada más que mandar al motor de
+            # instalación normal.
             self._on_queue_finished()
 
     def _run_shares_configuration(self, shares_entry: tuple[AppItem, QCheckBox]) -> None:
@@ -437,6 +452,55 @@ class LtpCssWindow(QMainWindow):
         self.shares_config_panel.setVisible(False)
         self.shares_config_panel.reset_lniata_fields()
         self.shares_config_panel.reset_contingencia()
+
+    def _run_appshell_configuration(self, appshell_entry: tuple[AppItem, QCheckBox]) -> None:
+        """Aplica la configuración de AppShell (ver
+        `app/appshell_config_apply.py`): por cada casilla marcada entre ATB,
+        BTP y DCP en el submenú DEVICE's, agrega su puerto COM y su
+        identificador al INI de configuración de AppShell
+        (`PrintAgent_COPA_PROD.ini`). BGR, OCR y BGR-OCR no tienen ninguna
+        lógica todavía y se ignoran acá. Refleja el resultado en la casilla
+        igual que un ítem normal de la cola (mismo patrón que
+        `_run_shares_configuration`)."""
+        item, checkbox = appshell_entry
+        checkbox.setProperty("installing", "true")
+        checkbox.style().unpolish(checkbox)
+        checkbox.style().polish(checkbox)
+        self.status_label.setText("Aplicando configuración de AppShell...")
+
+        selected_devices = [
+            name
+            for name in ("ATB", "BTP", "DCP")
+            if self.appshell_config_panel.device_checks[name].isChecked()
+        ]
+
+        try:
+            detail = apply_appshell_device_config(selected_devices)
+        except AppShellConfigError as exc:
+            self._results["error"] += 1
+            checkbox.setProperty("installing", "false")
+            checkbox.setProperty("failed", "true")
+            checkbox.setChecked(False)
+            checkbox.setToolTip(f"Error: {exc}")
+            checkbox.style().unpolish(checkbox)
+            checkbox.style().polish(checkbox)
+            self.status_label.setText(f"AppShell Configuracion: error - {exc}")
+            return
+
+        self._results["ok"] += 1
+        self._install_records.append((item.label, item.version, datetime.now()))
+        checkbox.setProperty("installing", "false")
+        checkbox.setVisible(False)
+        checkbox.style().unpolish(checkbox)
+        checkbox.style().polish(checkbox)
+        self.status_label.setText(f"AppShell Configuracion aplicada ({detail}).")
+
+        # Con la casilla ya oculta, el panel tampoco debe seguir viéndose.
+        # ATB/BTP/DCP se desmarcan para que una corrida posterior no vuelva
+        # a agregar el mismo puerto/id (la lógica de aplicación agrega con
+        # coma, no reemplaza -- ver `apply_appshell_device_config`).
+        self.appshell_config_panel.setVisible(False)
+        self.appshell_config_panel.reset_device_checks(selected_devices)
 
     # --------------------------------------------------------- señales cola
     def _on_item_started(self, item_id: str) -> None:

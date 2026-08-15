@@ -85,10 +85,41 @@ vez que la carpeta ya se renombró a CIUDAD):
   `app/appshell_config_apply.py`) si tiene uno distinto. Si la casilla NO
   está marcada, ninguna de esas tres líneas se toca (ni el flag, ni el
   LNIATA, ni el puerto).
+- Si **BGR** está marcado: la línea `BGR=0` cambia el "0" por "1" (deja
+  cualquier otra cosa que venga después en esa misma línea intacta). Si
+  **OCR** está marcado: igual, pero con la línea `OCR=0`. Ninguna de las
+  dos tiene un campo LNIATA ni un puerto asociado (a diferencia de
+  ATB/BTP/DCP) — son casillas simples del panel "DEVICES" de "Shares
+  Configuracion" (distintas de las de "AppShell Configuracion", que viven
+  en `app/appshell_config_apply.py` y editan otro archivo, `Mastcom.xml`).
+- Si **CRT 2** está marcado: la línea `CRT=<número>,...` cambia solo el
+  número inicial a "2", sin tocar el resto de la línea (los
+  identificadores de pantalla que vengan después quedan como estaban).
+- Si **CRT 4** está marcado: la línea `CRT=1,CRT1P1,CRT2C1,CRT3P2,`
+  (el valor de fábrica esperado) se reemplaza ENTERA por
+  `CRT=4,CRT1P1,CRT2C1,CRT3C1,CRT4C1,` — a diferencia de CRT 2, acá no
+  alcanza con cambiar el número: el identificador de la 3ra pantalla
+  también cambia (de "P2" a "C1") y se agrega un identificador para la
+  4ta. Por eso, si la línea no es EXACTAMENTE ese valor de fábrica
+  esperado (por ejemplo, porque ya se había aplicado CRT 2 antes en la
+  misma corrida), se lanza un error explicando qué se esperaba encontrar,
+  en vez de adivinar cómo transformarla. CRT 2 y CRT 4 son mutuamente
+  excluyentes en el panel (una estación tiene 2 pantallas o 4, no ambas a
+  la vez) — ver `app/ui/shares_config_panel.py`.
 
 En todos los casos se reemplaza solo el valor indicado, sin tocar las
-comas ni el resto de la línea.
-"""
+comas ni el resto de la línea (excepto CRT 4, que sí necesita reemplazar
+la línea completa — ver arriba). A diferencia del código VB.NET original,
+que en varios de estos pasos usaba `On Error Resume Next` (si algo no
+salía como se esperaba, seguía de largo en silencio), acá CUALQUIER paso
+marcado que no encuentre lo que espera lanza `SharesConfigError` con un
+mensaje claro — igual que el resto de esta pantalla.
+
+Todos estos cambios se acumulan en memoria y el archivo se reescribe una
+sola vez, al final, después de que TODOS los pasos marcados pasaron sin
+error — por eso, si algún paso falla (por ejemplo, CRT 2 y CRT 4 llegaran
+marcados juntos), el archivo en disco queda exactamente como estaba, sin
+ningún cambio parcial aplicado."""
 from __future__ import annotations
 
 import re
@@ -376,6 +407,53 @@ def _port_pattern(suffix: str) -> re.Pattern[str]:
     return re.compile(rf"(?m)^({re.escape(suffix)}1PORT=)([^,\r\n]*)")
 
 
+def _simple_activation_pattern(key: str) -> re.Pattern[str]:
+    # <KEY>=<valor><resto opcional> -> grupo 1 = "<KEY>=", grupo 2 = el
+    # valor actual (lo que sea, hasta la próxima coma o fin de línea; no
+    # hace falta que sea "0" -- igual que _flag_pattern, esto es
+    # idempotente: no importa cuál sea el valor actual, siempre se fuerza
+    # a "1"), grupo 3 = cualquier cosa que venga después (ej. una coma y
+    # más datos), tal cual, sin tocarla. A diferencia de _flag_pattern
+    # (ATB/BTP/DCP), NO exige que haya una coma después -- BGR y OCR son
+    # casillas simples sin su propio campo LNIATA/puerto asociado, así que
+    # esa línea puede no tener nada más.
+    return re.compile(rf"(?m)^({re.escape(key)}=)([^,\r\n]*)(.*)$")
+
+
+# CRT=<número>,<resto> -> grupo 1 = "CRT=", grupo 2 = el número de
+# pantallas actual, grupo 3 = ",<resto>" (los identificadores de pantalla)
+# tal cual, sin tocarlos -- usado por CRT 2, que solo cambia ese número.
+_CRT_COUNT_PATTERN = re.compile(r"(?m)^(CRT=)([^,\r\n]*)(,.*)$")
+
+# CRT 4 no alcanza con cambiar el número: el identificador de la 3ra
+# pantalla también cambia (de "P2" a "C1") y se agrega uno para la 4ta.
+# Por eso, en vez de una regex genérica, se exige que la línea sea
+# EXACTAMENTE este valor de fábrica esperado antes de reemplazarla entera
+# -- ver `_apply_crt4` y el docstring del módulo.
+_CRT4_EXPECTED_LINE = "CRT=1,CRT1P1,CRT2C1,CRT3P2,"
+_CRT4_TARGET_LINE = "CRT=4,CRT1P1,CRT2C1,CRT3C1,CRT4C1,"
+
+
+def _apply_crt4(text: str) -> tuple[str, bool]:
+    """Busca una línea que sea EXACTAMENTE `_CRT4_EXPECTED_LINE` y la
+    reemplaza entera por `_CRT4_TARGET_LINE` (conservando el salto de
+    línea original, \\r\\n o \\n). Devuelve `(texto_actualizado, True)` si
+    se aplicó, o `(texto_original, False)` si no se encontró esa línea
+    exacta (por ejemplo, porque ya se había aplicado CRT 2 antes en la
+    misma corrida, o porque esta estación no tenía el valor de fábrica
+    esperado) -- el llamador decide cómo avisar (ver `apply_udf_configuration`,
+    que lanza `SharesConfigError` en vez de seguir en silencio como el
+    VB.NET original)."""
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        stripped = line.rstrip("\r\n")
+        if stripped == _CRT4_EXPECTED_LINE:
+            ending = line[len(stripped):]
+            lines[i] = _CRT4_TARGET_LINE + ending
+            return "".join(lines), True
+    return text, False
+
+
 def apply_udf_configuration(
     ciudad: str,
     lniata_crt: str = "",
@@ -386,6 +464,10 @@ def apply_udf_configuration(
     btp_enabled: bool = False,
     lniata_dcp: str = "",
     dcp_enabled: bool = False,
+    bgr_enabled: bool = False,
+    ocr_enabled: bool = False,
+    crt2_enabled: bool = False,
+    crt4_enabled: bool = False,
     base_dir: Path = DEFAULT_BASE_DIR,
 ) -> str:
     """Edita `<base_dir>/<ciudad>/UDF/LTPCMUDF.INF` (ver el docstring del
@@ -399,6 +481,15 @@ def apply_udf_configuration(
     absoluto (quedan como estaban) — esto incluye el puerto fijo de cada
     sesión (ATB1PORT=COM7, BTP1PORT=COM8, DCP1PORT=COM10), que solo se
     valida/corrige cuando esa sesión está marcada.
+
+    `bgr_enabled` / `ocr_enabled` activan BGR=1 / OCR=1 (casillas simples,
+    sin campo asociado). `crt2_enabled` / `crt4_enabled` corrigen la línea
+    `CRT=...` al número de pantallas correspondiente (ver docstring del
+    módulo) — se espera que el panel las mantenga mutuamente excluyentes
+    (`app/ui/shares_config_panel.py`), pero si igual llegaran las dos
+    marcadas, se aplica primero CRT 2 y después CRT 4 (fallando con
+    `SharesConfigError` en el segundo paso, ya que CRT 2 ya habría dejado
+    la línea en un valor distinto al que CRT 4 espera).
 
     Lanza `SharesConfigError` si el archivo no aparece donde se espera, si
     alguna de las líneas requeridas no tiene el formato esperado, o si
@@ -460,6 +551,28 @@ def apply_udf_configuration(
             if port_hits == 0:
                 raise SharesConfigError(f"No se encontró ninguna línea '{suffix}1PORT=...' en '{udf_file}'.")
             updated_fields.append(f"{suffix}1PORT")
+
+    for key, enabled in (("BGR", bgr_enabled), ("OCR", ocr_enabled)):
+        if enabled:
+            text, hits = _simple_activation_pattern(key).subn(lambda m: m.group(1) + "1" + m.group(3), text)
+            if hits == 0:
+                raise SharesConfigError(f"No se encontró ninguna línea '{key}=...' en '{udf_file}'.")
+            updated_fields.append(key)
+
+    if crt2_enabled:
+        text, crt2_hits = _CRT_COUNT_PATTERN.subn(lambda m: m.group(1) + "2" + m.group(3), text)
+        if crt2_hits == 0:
+            raise SharesConfigError(f"No se encontró ninguna línea 'CRT=...' en '{udf_file}'.")
+        updated_fields.append("CRT2")
+
+    if crt4_enabled:
+        text, crt4_applied = _apply_crt4(text)
+        if not crt4_applied:
+            raise SharesConfigError(
+                f"No se encontró la línea de fábrica esperada '{_CRT4_EXPECTED_LINE}' en '{udf_file}' -- "
+                "revisa manualmente la línea CRT=... de este archivo."
+            )
+        updated_fields.append("CRT4")
 
     with udf_file.open("w", encoding="utf-8", newline="") as f:
         f.write(text)

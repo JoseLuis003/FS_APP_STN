@@ -55,6 +55,23 @@ def _get_hostname() -> str:
         return ""
 
 
+def _wire_mutually_exclusive(a: QCheckBox, b: QCheckBox) -> None:
+    """Al marcar una de las dos casillas, desmarca la otra (sin
+    deshabilitarla) -- versión mínima de `catalog_widgets._wire_exclusive_group`
+    para un par suelto de checkboxes que no vienen del catálogo (no tienen
+    un `AppItem`/`exclusive_group` detrás)."""
+
+    def make_handler(current: QCheckBox, other: QCheckBox):
+        def handler(checked: bool) -> None:
+            if checked:
+                other.setChecked(False)
+
+        return handler
+
+    a.toggled.connect(make_handler(a, b))
+    b.toggled.connect(make_handler(b, a))
+
+
 class SharesConfigPanel(QWidget):
     """Panel que aparece al marcar "Shares Configuracion" en el catálogo de
     LTP / CSS, con las secciones SETTING's / DEVICES / CRT's."""
@@ -135,6 +152,12 @@ class SharesConfigPanel(QWidget):
         row.addStretch(1)
 
         self._wire_field_enabling()
+        # Una estación tiene 2 pantallas CRT o 4, no ambas -- ver
+        # `app/shares_config_apply.py` (CRT 4 espera encontrar la línea
+        # `CRT=...` en su valor exacto de fábrica; si CRT 2 ya se aplicó
+        # antes en la misma corrida, esa línea ya no coincide, así que
+        # aplicar las dos juntas fallaría de forma dependiente del orden).
+        _wire_mutually_exclusive(self.crt_2_check, self.crt_4_check)
 
     @staticmethod
     def _add_setting_row(layout: QGridLayout, row_index: int, check: QCheckBox, edit: QLineEdit) -> None:
@@ -166,3 +189,14 @@ class SharesConfigPanel(QWidget):
         éxito — es una acción de un solo uso para esa corrida, igual que los
         campos LNIATA."""
         self.contingencia_check.setChecked(False)
+
+    def reset_devices_and_crts(self) -> None:
+        """Desmarca BGR, OCR, CRT 2 y CRT 4 después de aplicarlos con éxito
+        — igual que los campos LNIATA y CONTINGENCIA, son acciones de un
+        solo uso para esa corrida (volver a marcarlas en una corrida
+        posterior sin haber cambiado nada más no debería pasar; si hiciera
+        falta, el técnico las vuelve a marcar a mano)."""
+        self.bgr_check.setChecked(False)
+        self.ocr_check.setChecked(False)
+        self.crt_2_check.setChecked(False)
+        self.crt_4_check.setChecked(False)

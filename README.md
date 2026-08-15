@@ -219,8 +219,19 @@ identifican al equipo y no cambian entre corridas. Si CONTINGENCIA falla
 marcada y el resto del panel se comporta igual que cualquier otro error de
 esta acción.
 
-Las secciones DEVICES (BGR, OCR — WGE deshabilitado por ahora) y CRT's (2,
-4) por ahora son casillas simples, sin ninguna regla especial todavía.
+Las secciones **DEVICES** (BGR, OCR — WGE deshabilitado por ahora) y
+**CRT's** (2, 4) activan flags directamente en `LTPCMUDF.INF` (ver más
+abajo), portadas del VB.NET original con 3 decisiones de diseño: solo se
+usa la ruta moderna basada en CIUDAD (se descartó el fallback legado
+`C:\LTP\AppDatCM\CNT - Copy\UDF` que traía el VB.NET), cualquier línea
+esperada que no se encuentre falla con un mensaje claro en vez de
+seguir en silencio (a diferencia del `On Error Resume Next` original), y
+**CRT 2** / **CRT 4** son mutuamente excluyentes en el panel (una
+estación tiene 2 pantallas o 4, no ambas a la vez — marcar una desmarca
+la otra automáticamente, sin deshabilitarla). Al aplicar la configuración
+con éxito, las 4 casillas (BGR, OCR, CRT 2, CRT 4) se desmarcan para la
+próxima corrida, igual que los campos LNIATA y CONTINGENCIA.
+
 Esta es la segunda de varias condiciones que se están agregando "por
 partes" a la pantalla LTP / CSS (la primera fue el grupo exclusivo
 GEMALTO/3M/DESKO, arriba); las siguientes se irán sumando según se vayan
@@ -298,10 +309,31 @@ mismo módulo):
   Configuracion", donde OCR ya usa `COM9` en Mastcom.xml) si tenía uno
   distinto. Si la casilla NO está marcada, ninguna de esas tres líneas se
   toca (ni el flag, ni el LNIATA, ni el puerto).
+- Si **BGR** está marcado: la línea `BGR=0` cambia el "0" por "1" (sin
+  tocar nada más que venga después en esa línea). Si **OCR** está
+  marcado: igual, pero con la línea `OCR=0`. Son casillas simples, sin
+  campo LNIATA ni puerto asociado (a diferencia de ATB/BTP/DCP) — no
+  confundir con las casillas BGR/OCR de "AppShell Configuracion", que
+  viven en otro módulo y editan otro archivo (`Mastcom.xml`, ver más
+  abajo).
+- Si **CRT 2** está marcado: la línea `CRT=<número>,...` cambia solo el
+  número inicial a "2", sin tocar el resto de la línea.
+- Si **CRT 4** está marcado: la línea `CRT=1,CRT1P1,CRT2C1,CRT3P2,` (el
+  valor de fábrica esperado) se reemplaza ENTERA por
+  `CRT=4,CRT1P1,CRT2C1,CRT3C1,CRT4C1,` — a diferencia de CRT 2, acá
+  cambia también el identificador de la 3ra pantalla (de "P2" a "C1") y
+  se agrega uno para la 4ta, así que no alcanza con tocar el número. Si
+  la línea no es EXACTAMENTE ese valor de fábrica (por ejemplo, porque ya
+  se aplicó CRT 2 antes en la misma corrida), se lanza un error explicando
+  qué se esperaba, en vez de adivinar cómo transformarla.
 
 En todos los casos se reemplaza solo el valor indicado, sin quitar las
-comas ni tocar el resto de la línea, y es igual de idempotente que el
-paso del `.XRF`.
+comas ni tocar el resto de la línea (excepto CRT 4, que reemplaza la
+línea completa), y es igual de idempotente que el paso del `.XRF`. Todos
+los cambios se acumulan en memoria y el archivo se reescribe una sola vez,
+al final, después de que todos los pasos marcados pasaron sin error — si
+alguno falla (ej. CRT 2 y CRT 4 llegaran marcados juntos), el archivo en
+disco queda intacto, sin ningún cambio parcial aplicado.
 
 **Accesos directos de Shares (`app/shortcuts.py`):** por último, si los 2
 pasos de arriba (y CONTINGENCIA, si estaba marcado) terminaron sin error,
@@ -852,9 +884,8 @@ detalle.
    placeholders puestos como referencia mientras se arma el catálogo).
 2. Seguir agregando, "por partes", las demás condiciones de la pantalla
    LTP / CSS que todavía faltan (por ahora están implementadas la
-   selección única entre GEMALTO / 3M / DESKO y el panel de "Shares
-   Configuracion"; las secciones DEVICES y CRT's de ese panel todavía no
-   tienen ninguna regla especial).
+   selección única entre GEMALTO / 3M / DESKO y el panel completo de
+   "Shares Configuracion", incluyendo sus secciones DEVICES y CRT's).
 3. Probar la pantalla DOMINIO en una máquina Windows real, unida (o no) a
    la red de Copa — este entorno de desarrollo no tiene PowerShell/Windows
    disponible, así que solo se pudo verificar la lógica de orquestación en

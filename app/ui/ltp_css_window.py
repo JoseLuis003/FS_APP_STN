@@ -425,6 +425,10 @@ class LtpCssWindow(QMainWindow):
         lniata_dcp = self.shares_config_panel.lniata_edits["DCP"].text()
         dcp_enabled = self.shares_config_panel.lniata_checks["DCP"].isChecked()
         contingencia_enabled = self.shares_config_panel.contingencia_check.isChecked()
+        bgr_enabled = self.shares_config_panel.bgr_check.isChecked()
+        ocr_enabled = self.shares_config_panel.ocr_check.isChecked()
+        crt2_enabled = self.shares_config_panel.crt_2_check.isChecked()
+        crt4_enabled = self.shares_config_panel.crt_4_check.isChecked()
 
         self.logger.write(f"{item.label}: iniciando -> CIUDAD={ciudad!r}, HOSTNAME={hostname!r}")
         try:
@@ -439,6 +443,10 @@ class LtpCssWindow(QMainWindow):
                 btp_enabled=btp_enabled,
                 lniata_dcp=lniata_dcp,
                 dcp_enabled=dcp_enabled,
+                bgr_enabled=bgr_enabled,
+                ocr_enabled=ocr_enabled,
+                crt2_enabled=crt2_enabled,
+                crt4_enabled=crt4_enabled,
             )
             detail = f"{detail_xrf} | {detail_udf}"
             if contingencia_enabled:
@@ -474,6 +482,7 @@ class LtpCssWindow(QMainWindow):
         self.shares_config_panel.setVisible(False)
         self.shares_config_panel.reset_lniata_fields()
         self.shares_config_panel.reset_contingencia()
+        self.shares_config_panel.reset_devices_and_crts()
 
     def _run_appshell_configuration(self, appshell_entry: tuple[AppItem, QCheckBox]) -> None:
         """Aplica la configuración de AppShell (ver

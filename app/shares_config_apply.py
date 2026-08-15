@@ -49,7 +49,9 @@ vez que la carpeta ya se renombró a CIUDAD):
   el "0" por "1", la línea `<SUFIJO>1LNIATA=XXXXXX,` cambia su valor por
   el valor de ese campo LNIATA, y el puerto fijo de esa sesión
   (`ATB1PORT`/`BTP1PORT`/`DCP1PORT`) se corrige a su valor esperado (COM7,
-  COM8 y COM9 respectivamente) si tiene uno distinto. Si la casilla NO
+  COM8 y COM10 respectivamente -- DCP usa COM10, no COM9, porque comparten
+  impresoras con "AppShell Configuracion", donde OCR ya usa COM9, ver
+  `app/appshell_config_apply.py`) si tiene uno distinto. Si la casilla NO
   está marcada, ninguna de esas tres líneas se toca (ni el flag, ni el
   LNIATA, ni el puerto).
 
@@ -186,11 +188,14 @@ _LOCATION_PATTERN = re.compile(r"(?m)^(LOCATION=)([^,\r\n]*)")
 
 # Puerto fijo que le corresponde a cada sesión adicional — siempre debe
 # quedar en ese valor, esté o no esté marcada la casilla LNIATA de esa
-# sesión.
+# sesión. DCP usa COM10 (no COM9): este equipo comparte impresoras con
+# "AppShell Configuracion" (app/appshell_config_apply.py), donde OCR ya
+# usa COM9 en Mastcom.xml -- ambos archivos son distintos, pero un mismo
+# puerto físico no puede quedar asignado a dos sesiones a la vez.
 _SESSION_PORTS = {
     "ATB": "COM7",
     "BTP": "COM8",
-    "DCP": "COM9",
+    "DCP": "COM10",
 }
 
 
@@ -230,7 +235,7 @@ def apply_udf_configuration(
     está marcada (`crt_enabled` / `atb_enabled` / `btp_enabled` /
     `dcp_enabled`); si no está marcada, esas líneas no se tocan en
     absoluto (quedan como estaban) — esto incluye el puerto fijo de cada
-    sesión (ATB1PORT=COM7, BTP1PORT=COM8, DCP1PORT=COM9), que solo se
+    sesión (ATB1PORT=COM7, BTP1PORT=COM8, DCP1PORT=COM10), que solo se
     valida/corrige cuando esa sesión está marcada.
 
     Lanza `SharesConfigError` si el archivo no aparece donde se espera, si

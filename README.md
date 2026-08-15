@@ -265,8 +265,10 @@ mismo módulo):
   valor por el valor de ese campo (si está marcada pero el campo quedó
   vacío, se marca como error), y el puerto fijo de esa sesión se corrige a
   su valor esperado (`ATB1PORT` a `COM7`, `BTP1PORT` a `COM8`, `DCP1PORT` a
-  `COM9`) si tenía uno distinto. Si la casilla NO está marcada, ninguna de
-  esas tres líneas se toca (ni el flag, ni el LNIATA, ni el puerto).
+  `COM10` — no `COM9`, porque este equipo comparte impresoras con "AppShell
+  Configuracion", donde OCR ya usa `COM9` en Mastcom.xml) si tenía uno
+  distinto. Si la casilla NO está marcada, ninguna de esas tres líneas se
+  toca (ni el flag, ni el LNIATA, ni el puerto).
 
 En todos los casos se reemplaza solo el valor indicado, sin quitar las
 comas ni tocar el resto de la línea, y es igual de idempotente que el
@@ -351,8 +353,10 @@ AppShell,
     C:\Program Files (x86)\DXC Technology\PssAppShell\Configurations\PrintAgent_COPA_PROD.ini
 
 en dos líneas: `device.comport=` recibe el puerto COM del equipo (ATB →
-`COM7`, BTP → `COM8`, DCP → `COM9`) y `device.list=` recibe su
-identificador (ATB → `ATB1`, BTP → `BTP1`, DCP → `DCP1`). Si la línea ya
+`COM7`, BTP → `COM8`, DCP → `COM10` — no `COM9`, para no chocar con el
+puerto que ya usa la sesión OCR de Mastcom.xml, ver más abajo) y
+`device.list=` recibe su identificador (ATB → `ATB1`, BTP → `BTP1`, DCP →
+`DCP1`). Si la línea ya
 tiene algún valor después del `=` (de una corrida anterior, o de otro
 equipo aplicado en la misma corrida), el nuevo valor se agrega al final
 separado por una coma **sin espacio** (ej. `device.comport=COM7` pasa a

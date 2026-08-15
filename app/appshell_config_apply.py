@@ -11,7 +11,8 @@ Para cada casilla marcada (ATB, BTP y/o DCP), se agregan dos valores en ese
 archivo:
 
 - En la línea `device.comport=`: el puerto COM de ese equipo (ATB -> COM7,
-  BTP -> COM8, DCP -> COM9).
+  BTP -> COM8, DCP -> COM10 -- no COM9, para no chocar con el puerto que ya
+  usa OCR en Mastcom.xml, ver más abajo).
 - En la línea `device.list=`: el identificador de ese equipo (ATB -> ATB1,
   BTP -> BTP1, DCP -> DCP1).
 
@@ -46,10 +47,14 @@ DEFAULT_INI_PATH = Path(
 
 # Orden fijo de aplicación (no depende del orden en que el técnico marcó
 # las casillas) -- por (puerto COM, identificador) a agregar en device.list=.
+# DCP usa COM10 (no COM9) para no chocar con el puerto que ya usa la
+# sesión OCR de Mastcom.xml (ver _OCR_SESSION_BLOCK más abajo, Resource =
+# COM9) -- ambos archivos son distintos, pero comparten el mismo equipo
+# físico, así que no pueden apuntar al mismo puerto COM.
 _DEVICE_VALUES: dict[str, tuple[str, str]] = {
     "ATB": ("COM7", "ATB1"),
     "BTP": ("COM8", "BTP1"),
-    "DCP": ("COM9", "DCP1"),
+    "DCP": ("COM10", "DCP1"),
 }
 DEVICE_ORDER = ["ATB", "BTP", "DCP"]
 

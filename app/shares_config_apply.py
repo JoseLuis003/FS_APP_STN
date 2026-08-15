@@ -176,6 +176,24 @@ def _is_xrf_filename(name: str) -> bool:
     )
 
 
+def _list_xrf_matches(folder: Path) -> list[Path]:
+    """Lista los archivos dentro de `folder` que matcheen
+    `LTPCM<código de _CODE_LENGTH letras>.XRF`, sin lanzar ningún error --
+    puede devolver una lista vacía, con un solo elemento, o con varios
+    (caso ambiguo). `_find_xrf_file()` valida ese resultado y lanza error;
+    `_find_factory_folder()` necesita el conteo tal cual, para distinguir
+    "esta carpeta no tiene ninguno" (no es candidata, se ignora sin más)
+    de "esta carpeta tiene más de uno" (si ES candidata -- tiene al menos
+    un archivo de fábrica válido -- pero hay un archivo extra ahí que no
+    debería estar, típicamente uno viejo de una configuración anterior que
+    nunca se borró; visto en un equipo real). Antes, ambos casos se trataban
+    igual (la carpeta simplemente se descartaba como candidata), lo que
+    hacía que ese archivo viejo hiciera fallar la detección completa con un
+    mensaje engañoso ("no se encontró ninguna carpeta... revisa que Shares
+    esté instalado"), aunque sí estaba instalado."""
+    return sorted(f for f in folder.iterdir() if f.is_file() and _is_xrf_filename(f.name))
+
+
 def _find_xrf_file(folder: Path) -> Path:
     """Busca, dentro de `folder`, el único archivo que matchee
     `LTPCM<código>.XRF` (cualquier código de `_CODE_LENGTH` letras — no se
@@ -183,7 +201,7 @@ def _find_xrf_file(folder: Path) -> Path:
     encuentra más de uno (caso ambiguo; no debería pasar en una instalación
     normal de Shares, pero es más seguro fallar y avisar que adivinar
     cuál usar)."""
-    matches = [f for f in folder.iterdir() if f.is_file() and _is_xrf_filename(f.name)]
+    matches = _list_xrf_matches(folder)
     if not matches:
         raise SharesConfigError(f"No se encontró ningún archivo '{FILE_PREFIX}*{FILE_SUFFIX}' dentro de '{folder}'.")
     if len(matches) > 1:
@@ -200,18 +218,35 @@ def _find_factory_folder(base_dir: Path, ciudad: str) -> Path:
     la de CIUDAD), cuál contiene un archivo `LTPCM<código>.XRF` — esa es la
     carpeta "de fábrica" que Shares deja siempre, sea cual sea el código de
     3 letras que use esa versión del instalador (ver docstring del
-    módulo). Lanza `SharesConfigError` si no encuentra ninguna candidata, o
-    si encuentra más de una (caso ambiguo — revisar a mano)."""
+    módulo). Lanza `SharesConfigError` si no encuentra ninguna candidata, si
+    encuentra más de una (caso ambiguo entre carpetas — revisar a mano), o
+    si una misma carpeta candidata tiene más de un archivo `.XRF` válido
+    (caso ambiguo DENTRO de la carpeta — ver `_list_xrf_matches`; visto en
+    un equipo real: un archivo viejo de una ciudad anterior que nunca se
+    borró, junto al archivo de fábrica recién instalado)."""
     candidates = []
+    ambiguous_folders: list[tuple[Path, list[Path]]] = []
     for entry in sorted(base_dir.iterdir()):
         if not entry.is_dir() or entry.name.upper() == ciudad.upper():
             continue
-        try:
-            _find_xrf_file(entry)
-        except SharesConfigError:
-            continue  # esta carpeta no tiene (o tiene más de un) .XRF -- no es candidata
-        candidates.append(entry)
+        matches = _list_xrf_matches(entry)
+        if len(matches) == 1:
+            candidates.append(entry)
+        elif len(matches) > 1:
+            ambiguous_folders.append((entry, matches))
+        # len(matches) == 0: esta carpeta no tiene ningún .XRF -- no es
+        # candidata, se ignora sin más (ej. la carpeta "Browser" que deja
+        # el propio Shares junto a la de configuración).
 
+    if ambiguous_folders:
+        entry, matches = ambiguous_folders[0]
+        names = ", ".join(f.name for f in matches)
+        raise SharesConfigError(
+            f"La carpeta '{entry}' tiene más de un archivo '{FILE_PREFIX}*{FILE_SUFFIX}' ({names}) — no se "
+            "puede saber cuál es el correcto (puede ser un archivo de una configuración anterior que quedó "
+            "ahí sin borrarse); revisa manualmente esa carpeta y borra o renombra el que no corresponda a "
+            "esta estación."
+        )
     if not candidates:
         raise SharesConfigError(
             f"No se encontró ninguna carpeta con un archivo '{FILE_PREFIX}*{FILE_SUFFIX}' dentro de "

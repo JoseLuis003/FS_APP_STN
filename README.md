@@ -256,10 +256,18 @@ Es idempotente: si se vuelve a presionar INSTALAR después de que la
 carpeta y el archivo ya quedaron renombrados, los reutiliza en vez de
 fallar por no encontrar la carpeta de fábrica. Si CIUDAD o HOSTNAME están
 vacíos, si no hay ninguna carpeta candidata (ni la de CIUDAD ya
-configurada), o si hay MÁS de una carpeta candidata (caso ambiguo — la app
-prefiere fallar y avisar antes que adivinar cuál usar), se marca como
-error en la casilla (igual que un instalador que falla) y el resto de la
-cola sigue su curso con normalidad.
+configurada), si hay MÁS de una carpeta candidata (caso ambiguo entre
+carpetas), o si UNA MISMA carpeta candidata tiene más de un archivo
+`.XRF` válido adentro (caso ambiguo dentro de la carpeta — visto en un
+equipo real: un archivo `.XRF` viejo de una ciudad configurada
+anteriormente en ese equipo, ej. `LTPCMMIA.XRF`, que nunca se borró y
+quedó junto al archivo de fábrica recién instalado, ej. `LTPCMPTY.XRF`;
+antes esto se confundía con "esta carpeta no tiene ningún .XRF" y daba el
+mensaje engañoso de "revisa que Shares esté instalado" aunque sí lo
+estaba — ahora da un mensaje específico nombrando ambos archivos y la
+carpeta), la app prefiere fallar y avisar antes que adivinar cuál usar: se
+marca como error en la casilla (igual que un instalador que falla) y el
+resto de la cola sigue su curso con normalidad.
 
 Después de eso, se edita un segundo archivo dentro de la misma carpeta ya
 renombrada: `<CIUDAD>\UDF\LTPCMUDF.INF` (`apply_udf_configuration()` en el

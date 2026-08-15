@@ -32,7 +32,7 @@
             { "id": "appshell_4_00_0030",       "label": "AppShell 4.00.0030",      "installer": "DXC_GUI_RES\\PssAppShell 4.0\\PssAppShellSetup_v40_CM_20230517_Release1.msi", "silent_args": "/passive", "installer_type": "msi",    "default_checked": false, "enabled": true, "version": "4.00.0030",
               "extra_steps": [
                 { "installer": "DXC_GUI_RES\\PssAppShell 4.0\\vcredist.x86_14.40.33816.0.exe", "silent_args": "/passive", "installer_type": "exe", "version": "14.40.33816.0" },
-                { "installer": "DXC_GUI_RES\\PssAppShell 4.0\\CSS permision.bat", "silent_args": "", "installer_type": "script" }
+                { "installer": "appshell_post_install", "silent_args": "", "installer_type": "python" }
               ] },
             { "id": "appshell_configuracion",   "label": "AppShell Configuracion",  "installer": "",                               "silent_args": "",   "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
           ]

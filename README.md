@@ -330,6 +330,32 @@ instaladores, y en cambio se porta directo a código Python empaquetado
 dentro de la app, con su propio manejo de errores por paso en vez de
 depender de un único código de salida de todo un `.bat`.
 
+**Pasos posteriores a instalar AppShell 4.00.0030
+(`app/appshell_post_install.py`):** el ítem `appshell_4_00_0030` del
+catálogo tiene, después del `.msi` principal y del `vcredist`, un tercer
+`extra_step` con `"installer_type": "python"` — clave
+`"appshell_post_install"` — que reemplaza al script `CSS permision.bat`
+que se usaba antes. Seguridad de Copa bloquea la ejecución de archivos
+`.bat` en los equipos, así que esta lógica se porta directo a Python, en
+2 pasos:
+
+1. `icacls "C:\Program Files (x86)\DXC Technology" /grant
+   Everyone:(OI)(CI)F /t /c` — da control total a cualquier usuario sobre
+   esa carpeta y todo su contenido ya existente (`/t`), necesario para que
+   AppShell pueda escribir su propia configuración ahí en tiempo de
+   ejecución. Equivalente a marcar "Full control" para "Everyone" a mano
+   en el diálogo de Seguridad de Windows.
+2. Copia los 2 accesos directos que ya trae armados el instalador de
+   AppShell (`DXC_GUI_RES\PssAppShell 4.0\Start PSS AppShell PROD.lnk` y
+   `...\Start PSS AppShell TEST.lnk`, junto al `.msi` y al `vcredist`) al
+   escritorio público (`C:\Users\Public\Desktop`), sobrescribiendo si ya
+   existían de una instalación anterior.
+
+Se detiene en el primer paso que falle (carpeta no encontrada, `icacls`
+termina con código de salida distinto de 0, falta alguno de los 2 accesos
+directos, etc.), igual que cualquier secuencia de `extra_steps` del
+catálogo.
+
 **Panel "AppShell Configuracion" (`app/ui/appshell_config_panel.py`):** al
 marcar la casilla "AppShell Configuracion" del catálogo (columna de
 AppShell) aparece debajo un panel con una sola sección, **DEVICE's**, con
@@ -526,7 +552,10 @@ FS_APP_STN/
 │   ├── installer_detect.py   # sugerencia de switches silenciosos para apps nuevas
 │   ├── report.py             # genera el reporte HTML/CSV al terminar
 │   ├── shares_config_apply.py # renombra/edita los archivos de Shares (acción "Shares Configuracion")
+│   ├── shares_setup.py        # paso post-instalación de Shares 5.0 (port de "LTP setting.bat")
+│   ├── shortcuts.py           # crea los accesos directos de Shares en el escritorio público
 │   ├── appshell_config_apply.py # edita el INI (ATB/BTP/DCP) y Mastcom.xml (BGR/OCR) de "AppShell Configuracion"
+│   ├── appshell_post_install.py # paso post-instalación de AppShell 4.00.0030 (reemplaza "CSS permision.bat")
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
 │   └── ui/
 │       ├── catalog_widgets.py # columna de checkboxes + grupos exclusivos (compartido)

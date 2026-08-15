@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from app.appshell_post_install import run_appshell_post_install
 from app.config import AppItem, LOGS_DIR
 from app.shares_setup import run_ltp_shares_post_install
 
@@ -52,23 +53,32 @@ def _resolve_installer_path(base: Path, installer_rel: str) -> Path:
 # Registro de pasos "python" (`installer_type: "python"`): a diferencia de
 # exe/msi/msu/script/open, este tipo de paso no apunta a un archivo -- el
 # campo "installer" del paso es una CLAVE que identifica qué función de
-# Python correr (ver `app/shares_setup.py`). Se usa para lógica que ya no
-# tiene sentido mantener como un .bat/.ps1 suelto en la carpeta de
-# instaladores, sino que se porta directo a código Python empaquetado
-# dentro de la app (con su propio manejo de errores por paso, en vez de
-# depender de un solo código de salida de todo un script).
+# Python correr (ver `app/shares_setup.py` y `app/appshell_post_install.py`).
+# Se usa para lógica que ya no tiene sentido mantener como un .bat/.ps1
+# suelto en la carpeta de instaladores (más aún si Seguridad de Copa
+# bloquea directamente la ejecución de .bat, como pasa con AppShell), sino
+# que se porta directo a código Python empaquetado dentro de la app (con
+# su propio manejo de errores por paso, en vez de depender de un solo
+# código de salida de todo un script).
+#
+# Cada handler registrado acá recibe `installers_base_path` como único
+# argumento posicional (ver el `handler(self.installers_base_path)` más
+# abajo, en `InstallWorker.run`) -- lo uses o no (p. ej.
+# `run_ltp_shares_post_install` lo ignora, porque sus pasos no dependen de
+# la carpeta de instaladores; `run_appshell_post_install` sí lo necesita,
+# para ubicar los accesos directos que hay que copiar).
 #
 # Armado adentro de una función (en vez de un dict a nivel de módulo) a
-# propósito: así, cada llamada resuelve `run_ltp_shares_post_install` como
-# variable global de este módulo EN ESE MOMENTO -- si algo la reemplaza
-# (p. ej. `mock.patch("app.installer.run_ltp_shares_post_install", ...)`
-# en una prueba), la próxima llamada ya ve el reemplazo. Con un dict
-# armado una sola vez al importar el módulo, quedaría "congelada" la
-# referencia original de forma permanente, inmune a cualquier patch
-# posterior.
+# propósito: así, cada llamada resuelve estas funciones como variables
+# globales de este módulo EN ESE MOMENTO -- si algo las reemplaza (p. ej.
+# `mock.patch("app.installer.run_ltp_shares_post_install", ...)` en una
+# prueba), la próxima llamada ya ve el reemplazo. Con un dict armado una
+# sola vez al importar el módulo, quedaría "congelada" la referencia
+# original de forma permanente, inmune a cualquier patch posterior.
 def _python_step_handlers() -> dict:
     return {
         "ltp_shares_post_install": run_ltp_shares_post_install,
+        "appshell_post_install": run_appshell_post_install,
     }
 
 
@@ -162,10 +172,12 @@ class InstallWorker(QThread):
             if installer_type == "python":
                 # Tipo "python": el paso no apunta a un archivo -- "installer"
                 # es la clave de una función registrada en
-                # _PYTHON_STEP_HANDLERS (ver app/shares_setup.py). No hay
-                # ruta que resolver ni verificar que exista; el éxito/fracaso
-                # lo decide la función en sí (puede lanzar cualquier
-                # excepción, no solo un código de salida de proceso).
+                # _python_step_handlers() (ver app/shares_setup.py y
+                # app/appshell_post_install.py). No hay ruta que resolver ni
+                # verificar que exista; el éxito/fracaso lo decide la función
+                # en sí (puede lanzar cualquier excepción, no solo un código
+                # de salida de proceso). Se le pasa siempre
+                # `installers_base_path`, lo use o no.
                 handler = _python_step_handlers().get(installer_rel)
                 if handler is None:
                     msg = f"Paso de Python desconocido: '{installer_rel}'{step_tag}"
@@ -174,7 +186,7 @@ class InstallWorker(QThread):
                     return
                 self.logger.write(f"{item.label}{step_tag}: ejecutando paso Python -> {installer_rel}")
                 try:
-                    last_detail = handler()
+                    last_detail = handler(self.installers_base_path)
                 except Exception as exc:  # una función de paso puede lanzar cualquier tipo de error
                     msg = f"{exc}{step_tag}"
                     self.logger.write(f"{item.label}: ERROR - {msg}")

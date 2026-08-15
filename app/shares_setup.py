@@ -152,13 +152,19 @@ def _register_ocx_files(ltp_dir: Path = LTP_DIR, ocx_files: list[str] = OCX_FILE
     return f"{len(ocx_files)} control(es) OCX registrados en {ltp_dir}"
 
 
-def run_ltp_shares_post_install() -> str:
+def run_ltp_shares_post_install(installers_base_path: str = "") -> str:
     """Corre los 5 pasos de arriba en orden, uno detrás del otro -- se
     detiene en el primer paso que falle (no reintenta ni sigue con los
     siguientes), igual que cualquier secuencia de `extra_steps` del
     catálogo. Pensado para colgarse como paso `installer_type: "python"`
     del ítem `shares_5_0` en `ltp_css_apps.json` (ver
     `app/installer.py`).
+
+    `installers_base_path` se recibe (y se ignora) solo porque
+    `InstallWorker` le pasa ese argumento a TODO paso `installer_type:
+    "python"` por igual, los use o no -- ninguno de los 5 pasos de acá
+    depende de la carpeta de instaladores (todos operan sobre rutas fijas
+    del equipo, C:\\LTP y C:\\Windows\\Fonts).
 
     Devuelve un mensaje corto de éxito con el detalle de cada paso, listo
     para mostrar en el estado de la pantalla. Lanza `SharesSetupError` si

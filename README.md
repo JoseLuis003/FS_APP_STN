@@ -232,22 +232,34 @@ definiendo.
 que ya están en el equipo, usando los valores actuales de CIUDAD y
 HOSTNAME del panel. En orden:
 
-1. Busca la carpeta `C:\LTP\AppDatCM\CNT` y la renombra al valor de
-   CIUDAD (ej. `CNT` -> `PTY`).
-2. Dentro de esa carpeta, busca `LTPCMCNT.XRF` y le cambia las 3 últimas
-   letras antes de la extensión ("CNT") por el valor de CIUDAD (ej.
-   `LTPCMCNT.XRF` -> `LTPCMPTY.XRF`).
-3. Abre ese archivo, reemplaza cualquier otra aparición de "CNT" por el
-   valor de CIUDAD, y en la línea `WORKSTATION_NAME=CHECKIN` cambia la
+1. Busca, dentro de `C:\LTP\AppDatCM`, la carpeta que el instalador de
+   Shares 5.0 deja con un código "de fábrica" y la renombra al valor de
+   CIUDAD (ej. `PTY` -> `MDE`). Ese código **no está hardcodeado en el
+   código de la app** — se detecta dinámicamente buscando cuál subcarpeta
+   contiene un archivo `LTPCM<código>.XRF` (sea cual sea ese código de 3
+   letras). Esto es a propósito: la versión 5.0 actual del instalador deja
+   siempre el código "PTY" (sin importar la ciudad real de destino de la
+   estación — antes se pensaba que era un placeholder genérico "CNT"), y
+   si una futura versión de Shares vuelve a cambiar ese código, esta
+   detección dinámica sigue funcionando sin que haga falta tocar el código
+   de la app. Si la estación es justo de Panamá (CIUDAD = "PTY"), no hace
+   falta renombrar nada y la carpeta se reutiliza tal cual.
+2. Dentro de esa carpeta, busca el archivo `LTPCM<código>.XRF` detectado
+   en el paso 1 y le cambia las 3 letras del código por el valor de CIUDAD
+   (ej. `LTPCMPTY.XRF` -> `LTPCMMDE.XRF`).
+3. Abre ese archivo, reemplaza cualquier otra aparición de ese código por
+   el valor de CIUDAD, y en la línea `WORKSTATION_NAME=CHECKIN` cambia la
    clave `WORKSTATION_NAME` por el valor de HOSTNAME (queda, por ejemplo,
    `LTP-JB=CHECKIN`).
 
 Es idempotente: si se vuelve a presionar INSTALAR después de que la
 carpeta y el archivo ya quedaron renombrados, los reutiliza en vez de
-fallar por no encontrar `CNT`. Si CIUDAD o HOSTNAME están vacíos, o si la
-carpeta/archivo no aparecen donde se esperan, se marca como error en la
-casilla (igual que un instalador que falla) y el resto de la cola sigue
-su curso con normalidad.
+fallar por no encontrar la carpeta de fábrica. Si CIUDAD o HOSTNAME están
+vacíos, si no hay ninguna carpeta candidata (ni la de CIUDAD ya
+configurada), o si hay MÁS de una carpeta candidata (caso ambiguo — la app
+prefiere fallar y avisar antes que adivinar cuál usar), se marca como
+error en la casilla (igual que un instalador que falla) y el resto de la
+cola sigue su curso con normalidad.
 
 Después de eso, se edita un segundo archivo dentro de la misma carpeta ya
 renombrada: `<CIUDAD>\UDF\LTPCMUDF.INF` (`apply_udf_configuration()` en el

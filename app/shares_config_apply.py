@@ -6,25 +6,42 @@ directamente los archivos de Shares que ya están en el equipo, usando los
 valores de CIUDAD y HOSTNAME capturados en el panel
 (`app/ui/shares_config_panel.py`). Los pasos, en este orden:
 
-1. Busca la carpeta `CNT` dentro de `base_dir` (por defecto
-   `C:\\LTP\\AppDatCM`) y la renombra al valor de CIUDAD. Si ya se había
-   renombrado en una corrida anterior (ya no existe `CNT` pero sí la
-   carpeta con el nombre de CIUDAD), se reutiliza tal cual — así se puede
-   volver a aplicar esta acción sin que falle por no encontrar `CNT`.
-2. Dentro de esa carpeta, busca el archivo `LTPCMCNT.XRF` y le cambia las
-   3 últimas letras antes de la extensión ("CNT") por el valor de CIUDAD
-   (ej. `LTPCMCNT.XRF` -> `LTPCMPTY.XRF` si CIUDAD es "PTY"). Mismo criterio
-   de idempotencia que en el paso 1.
+1. Busca, dentro de `base_dir` (por defecto `C:\\LTP\\AppDatCM`), la
+   carpeta que el instalador de Shares 5.0 deja con un código "de
+   fábrica" -- y la renombra al valor real de CIUDAD.
+
+   Ese código de fábrica NO se asume fijo (antes se pensó que era "CNT";
+   resultó ser "PTY" en la versión 5.0 actual del instalador, sin importar
+   la ciudad real de destino de la estación -- ver historial de este
+   módulo). En vez de volver a hardcodear un valor que una futura versión
+   de Shares podría cambiar de nuevo, esta carpeta se **detecta
+   dinámicamente**: se busca, entre las subcarpetas directas de
+   `base_dir` (que no sea ya la de CIUDAD), cuál contiene un archivo que
+   matchee `LTPCM<código>.XRF` (el patrón fijo que sí se mantiene entre
+   versiones), sea cual sea ese código de 3 letras. Así, si una futura
+   versión de Shares vuelve a cambiar el código de fábrica, esta acción
+   sigue funcionando sin tocar el código de la app.
+
+   Si CIUDAD ya coincide con el código que trae de fábrica (ej. una
+   estación de Panamá con CIUDAD = "PTY"), no hace falta renombrar nada —
+   se reutiliza la carpeta tal cual. Si ya se había renombrado en una
+   corrida anterior (ya existe la carpeta de CIUDAD), también se reutiliza
+   tal cual — así se puede volver a aplicar esta acción sin que falle por
+   no encontrar la carpeta de fábrica.
+2. Dentro de esa carpeta, busca el archivo `LTPCM<código>.XRF` (el mismo
+   que sirvió para detectarla en el paso 1) y le cambia las 3 letras del
+   código por el valor de CIUDAD (ej. `LTPCMPTY.XRF` -> `LTPCMMDE.XRF` si
+   CIUDAD es "MDE"). Mismo criterio de idempotencia que en el paso 1.
 3. Abre ese archivo y:
-   a. Reemplaza cualquier aparición de "CNT" en el contenido por el valor
-      de CIUDAD.
+   a. Reemplaza cualquier aparición del código detectado en el paso 1/2
+      (ej. "PTY") en el contenido por el valor de CIUDAD.
    b. En la línea que empieza con `WORKSTATION_NAME=`, reemplaza esa clave
       por el valor de HOSTNAME, dejando el resto de la línea intacto (ej.
       `WORKSTATION_NAME=CHECKIN` -> `LTP-JB=CHECKIN`).
 
    Se hace primero (a) y después (b) — y no al revés — para que, si el
-   HOSTNAME llegara a contener "CNT" como parte de su nombre, el reemplazo
-   global del paso (a) no lo toque por accidente.
+   HOSTNAME llegara a contener ese código como parte de su nombre, el
+   reemplazo global del paso (a) no lo toque por accidente.
 
 Por último, si la casilla CONTINGENCIA del panel está marcada,
 `run_contingencia_script()` corre `LTP TRAVEL DOC\Contingencia.bat` — a
@@ -68,12 +85,16 @@ from pathlib import Path
 # una ruta distinta a `apply_shares_configuration()` (útil para pruebas).
 DEFAULT_BASE_DIR = Path(r"C:\LTP\AppDatCM")
 
-# Código de ciudad "de fábrica" que trae Shares antes de configurarlo.
-OLD_CODE = "CNT"
-
-# Prefijo del nombre de archivo, antes del código de ciudad.
+# Prefijo/sufijo fijo del nombre de archivo que deja Shares, alrededor del
+# código de 3 letras que sí puede cambiar entre versiones (ver docstring
+# del módulo): "LTPCM" + <código> + ".XRF" (ej. "LTPCMPTY.XRF"). El código
+# en sí ya NO se asume fijo en ningún lado de este archivo -- se detecta
+# dinámicamente en cada corrida (ver `_find_xrf_file` / `_find_factory_folder`),
+# precisamente para no tener que volver a tocar este código si una futura
+# versión de Shares cambia otra vez qué código de fábrica usa.
 FILE_PREFIX = "LTPCM"
 FILE_SUFFIX = ".XRF"
+_CODE_LENGTH = 3
 
 # Clave de la línea que identifica el nombre de estación dentro del .XRF.
 WORKSTATION_KEY = "WORKSTATION_NAME"
@@ -109,19 +130,22 @@ def apply_shares_configuration(
         )
 
     base_dir = Path(base_dir)
-    new_folder = _rename_or_reuse(
-        old_path=base_dir / OLD_CODE,
-        new_path=base_dir / ciudad,
-        kind="carpeta",
-    )
+    if not base_dir.exists():
+        raise SharesConfigError(f"No se encontró la carpeta base '{base_dir}'.")
 
-    old_filename = f"{FILE_PREFIX}{OLD_CODE}{FILE_SUFFIX}"
-    new_filename = f"{FILE_PREFIX}{ciudad}{FILE_SUFFIX}"
-    new_file = _rename_or_reuse(
-        old_path=new_folder / old_filename,
-        new_path=new_folder / new_filename,
-        kind="archivo",
-    )
+    new_folder = base_dir / ciudad
+    if not new_folder.exists():
+        # Todavía no se había aplicado esta acción antes: hay que
+        # encontrar la carpeta "de fábrica" (código detectado
+        # dinámicamente, ver docstring del módulo) y renombrarla.
+        source_folder = _find_factory_folder(base_dir, ciudad)
+        source_folder.rename(new_folder)
+
+    xrf_file = _find_xrf_file(new_folder)
+    factory_code = xrf_file.name[len(FILE_PREFIX) : -len(FILE_SUFFIX)]
+    new_file = new_folder / f"{FILE_PREFIX}{ciudad}{FILE_SUFFIX}"
+    if xrf_file != new_file:
+        xrf_file.rename(new_file)
 
     # `newline=""` desactiva la traducción automática de saltos de línea de
     # Python: sin esto, un archivo con \r\n (típico en config de Windows) se
@@ -130,10 +154,10 @@ def apply_shares_configuration(
     with new_file.open("r", encoding="utf-8", errors="replace", newline="") as f:
         text = f.read()
 
-    # (a) primero el reemplazo global de "CNT" -> CIUDAD...
-    text = text.replace(OLD_CODE, ciudad)
+    # (a) primero el reemplazo global del código detectado -> CIUDAD...
+    text = text.replace(factory_code, ciudad)
     # (b) ...y después la línea WORKSTATION_NAME=, para que un HOSTNAME que
-    # contenga "CNT" no se vea afectado por el reemplazo de arriba.
+    # contenga ese código no se vea afectado por el reemplazo de arriba.
     text = _WORKSTATION_PATTERN.sub(lambda _m: hostname, text)
 
     with new_file.open("w", encoding="utf-8", newline="") as f:
@@ -142,31 +166,65 @@ def apply_shares_configuration(
     return f"Carpeta: {new_folder} | Archivo: {new_file}"
 
 
-def _rename_or_reuse(old_path: Path, new_path: Path, kind: str) -> Path:
-    """Renombra `old_path` a `new_path` si `old_path` todavía existe; si ya
-    no existe pero `new_path` sí (por una corrida anterior de esta misma
-    acción), se reutiliza tal cual. Si no existe ninguno de los dos, o si
-    existen ambos a la vez (algo raro que conviene revisar a mano), se
-    lanza `SharesConfigError`."""
-    if old_path == new_path:
-        if old_path.exists():
-            return old_path
-        raise SharesConfigError(f"No se encontró {kind} '{old_path}'.")
+def _is_xrf_filename(name: str) -> bool:
+    """True si `name` matchea `LTPCM<código de _CODE_LENGTH letras>.XRF`
+    (sin importar mayúsculas/minúsculas -- Windows no distingue)."""
+    return (
+        len(name) == len(FILE_PREFIX) + _CODE_LENGTH + len(FILE_SUFFIX)
+        and name.upper().startswith(FILE_PREFIX.upper())
+        and name.upper().endswith(FILE_SUFFIX.upper())
+    )
 
-    old_exists = old_path.exists()
-    new_exists = new_path.exists()
 
-    if old_exists and new_exists:
+def _find_xrf_file(folder: Path) -> Path:
+    """Busca, dentro de `folder`, el único archivo que matchee
+    `LTPCM<código>.XRF` (cualquier código de `_CODE_LENGTH` letras — no se
+    asume cuál). Lanza `SharesConfigError` si no encuentra ninguno, o si
+    encuentra más de uno (caso ambiguo; no debería pasar en una instalación
+    normal de Shares, pero es más seguro fallar y avisar que adivinar
+    cuál usar)."""
+    matches = [f for f in folder.iterdir() if f.is_file() and _is_xrf_filename(f.name)]
+    if not matches:
+        raise SharesConfigError(f"No se encontró ningún archivo '{FILE_PREFIX}*{FILE_SUFFIX}' dentro de '{folder}'.")
+    if len(matches) > 1:
+        names = ", ".join(f.name for f in matches)
         raise SharesConfigError(
-            f"Ya existen tanto '{old_path}' como '{new_path}' — revisa manualmente cuál es la correcta antes de continuar."
+            f"Se encontró más de un archivo '{FILE_PREFIX}*{FILE_SUFFIX}' dentro de '{folder}' ({names}) "
+            "— no se puede saber cuál es el correcto, revisa manualmente."
         )
-    if old_exists:
-        old_path.rename(new_path)
-        return new_path
-    if new_exists:
-        # Ya se había aplicado esta acción antes: se reutiliza tal cual.
-        return new_path
-    raise SharesConfigError(f"No se encontró {kind} '{old_path}' (ni ya renombrada a '{new_path}').")
+    return matches[0]
+
+
+def _find_factory_folder(base_dir: Path, ciudad: str) -> Path:
+    """Busca, entre las subcarpetas DIRECTAS de `base_dir` (que no sea ya
+    la de CIUDAD), cuál contiene un archivo `LTPCM<código>.XRF` — esa es la
+    carpeta "de fábrica" que Shares deja siempre, sea cual sea el código de
+    3 letras que use esa versión del instalador (ver docstring del
+    módulo). Lanza `SharesConfigError` si no encuentra ninguna candidata, o
+    si encuentra más de una (caso ambiguo — revisar a mano)."""
+    candidates = []
+    for entry in sorted(base_dir.iterdir()):
+        if not entry.is_dir() or entry.name.upper() == ciudad.upper():
+            continue
+        try:
+            _find_xrf_file(entry)
+        except SharesConfigError:
+            continue  # esta carpeta no tiene (o tiene más de un) .XRF -- no es candidata
+        candidates.append(entry)
+
+    if not candidates:
+        raise SharesConfigError(
+            f"No se encontró ninguna carpeta con un archivo '{FILE_PREFIX}*{FILE_SUFFIX}' dentro de "
+            f"'{base_dir}' (ni tampoco la carpeta '{ciudad}' ya configurada) — revisa que Shares 5.0 "
+            "ya esté instalado en este equipo."
+        )
+    if len(candidates) > 1:
+        names = ", ".join(c.name for c in candidates)
+        raise SharesConfigError(
+            f"Se encontraron varias carpetas candidatas dentro de '{base_dir}' ({names}) — no se puede "
+            "saber cuál corresponde a esta estación, revisa manualmente cuál es la correcta."
+        )
+    return candidates[0]
 
 
 # --------------------------------------------------------------------------
@@ -229,7 +287,7 @@ def apply_udf_configuration(
     """Edita `<base_dir>/<ciudad>/UDF/LTPCMUDF.INF` (ver el docstring del
     módulo para el detalle de cada línea). Se asume que
     `apply_shares_configuration()` ya corrió antes, por eso la carpeta se
-    busca directamente con el nombre de CIUDAD (no "CNT").
+    busca directamente con el nombre de CIUDAD (no "PTY").
 
     LNIATA CRT, ATB, BTP y DCP solo se aplican si su respectiva casilla
     está marcada (`crt_enabled` / `atb_enabled` / `btp_enabled` /

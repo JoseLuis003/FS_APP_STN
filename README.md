@@ -254,20 +254,29 @@ HOSTNAME del panel. En orden:
 
 Es idempotente: si se vuelve a presionar INSTALAR después de que la
 carpeta y el archivo ya quedaron renombrados, los reutiliza en vez de
-fallar por no encontrar la carpeta de fábrica. Si CIUDAD o HOSTNAME están
-vacíos, si no hay ninguna carpeta candidata (ni la de CIUDAD ya
-configurada), si hay MÁS de una carpeta candidata (caso ambiguo entre
-carpetas), o si UNA MISMA carpeta candidata tiene más de un archivo
-`.XRF` válido adentro (caso ambiguo dentro de la carpeta — visto en un
-equipo real: un archivo `.XRF` viejo de una ciudad configurada
-anteriormente en ese equipo, ej. `LTPCMMIA.XRF`, que nunca se borró y
-quedó junto al archivo de fábrica recién instalado, ej. `LTPCMPTY.XRF`;
-antes esto se confundía con "esta carpeta no tiene ningún .XRF" y daba el
-mensaje engañoso de "revisa que Shares esté instalado" aunque sí lo
-estaba — ahora da un mensaje específico nombrando ambos archivos y la
-carpeta), la app prefiere fallar y avisar antes que adivinar cuál usar: se
-marca como error en la casilla (igual que un instalador que falla) y el
-resto de la cola sigue su curso con normalidad.
+fallar por no encontrar la carpeta de fábrica.
+
+Si una misma carpeta candidata tiene MÁS de un archivo `.XRF` válido
+adentro — visto en un equipo real: un equipo reutilizado, con el archivo
+`.XRF` de una ciudad configurada anteriormente en ese mismo equipo (ej.
+`LTPCMMIA.XRF`, de 2024) que nunca se borró, junto al archivo de fábrica
+recién instalado (ej. `LTPCMPTY.XRF`, de "ahora") — no se falla ni se
+adivina a ciegas: se asume que el más reciente (mayor fecha de
+modificación) es el que el instalador de Shares 5.0 acaba de dejar en esta
+corrida, y los demás — más viejos — se **mueven** (nunca se borran) a una
+subcarpeta `_config_anterior` dentro de esa misma carpeta, quedando
+recuperables ahí si hiciera falta revisarlos más adelante (si ya había
+algo archivado antes con ese mismo nombre, no se sobrescribe: se le agrega
+un sufijo numérico). El detalle final menciona qué se archivó.
+
+Si CIUDAD o HOSTNAME están vacíos, si no hay ninguna carpeta candidata (ni
+la de CIUDAD ya configurada), o si hay MÁS de una carpeta candidata (caso
+ambiguo ENTRE carpetas distintas — a diferencia de tener varios `.XRF`
+dentro de UNA misma carpeta, este caso sí requiere revisión manual, porque
+no hay ninguna fecha que ayude a saber cuál carpeta es la correcta), la
+app prefiere fallar y avisar antes que adivinar cuál usar: se marca como
+error en la casilla (igual que un instalador que falla) y el resto de la
+cola sigue su curso con normalidad.
 
 Después de eso, se edita un segundo archivo dentro de la misma carpeta ya
 renombrada: `<CIUDAD>\UDF\LTPCMUDF.INF` (`apply_udf_configuration()` en el

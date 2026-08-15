@@ -28,6 +28,20 @@ valores de CIUDAD y HOSTNAME capturados en el panel
    corrida anterior (ya existe la carpeta de CIUDAD), también se reutiliza
    tal cual — así se puede volver a aplicar esta acción sin que falle por
    no encontrar la carpeta de fábrica.
+
+   Si esa carpeta candidata tiene MÁS de un archivo `.XRF` válido adentro
+   -- visto en un equipo real: un equipo reutilizado, con el archivo de
+   una ciudad configurada anteriormente (ej. `LTPCMMIA.XRF`, de 2024) que
+   nunca se borró, junto al archivo de fábrica recién instalado (ej.
+   `LTPCMPTY.XRF`, de hoy) -- no se falla ni se adivina a ciegas: se
+   asume que el más reciente (mayor fecha de modificación) es el que el
+   instalador de Shares 5.0 acaba de dejar en esta corrida (cada vez que
+   se reinstala, Shares reescribe su propio archivo de fábrica, así que
+   su fecha queda "de ahora"), y los demás -- más viejos -- se MUEVEN
+   (nunca se borran) a una subcarpeta `_config_anterior` dentro de esa
+   misma carpeta, para que no sigan generando esta misma ambigüedad en la
+   próxima corrida, pero sigan recuperables ahí si hiciera falta
+   revisarlos (ver `_archive_older_xrf_matches`).
 2. Dentro de esa carpeta, busca el archivo `LTPCM<código>.XRF` (el mismo
    que sirvió para detectarla en el paso 1) y le cambia las 3 letras del
    código por el valor de CIUDAD (ej. `LTPCMPTY.XRF` -> `LTPCMMDE.XRF` si
@@ -96,6 +110,13 @@ FILE_PREFIX = "LTPCM"
 FILE_SUFFIX = ".XRF"
 _CODE_LENGTH = 3
 
+# Subcarpeta donde se archivan (se MUEVEN, no se borran) los archivos
+# `.XRF` "de más" que se encuentren dentro de una misma carpeta candidata
+# (ver `_archive_older_xrf_matches`) -- típicamente el archivo de una
+# ciudad configurada anteriormente en ese mismo equipo, que nunca se
+# borró y quedó junto al archivo de fábrica recién instalado.
+ARCHIVE_SUBDIR_NAME = "_config_anterior"
+
 # Clave de la línea que identifica el nombre de estación dentro del .XRF.
 WORKSTATION_KEY = "WORKSTATION_NAME"
 _WORKSTATION_PATTERN = re.compile(rf"(?m)^{re.escape(WORKSTATION_KEY)}(?==)")
@@ -134,11 +155,12 @@ def apply_shares_configuration(
         raise SharesConfigError(f"No se encontró la carpeta base '{base_dir}'.")
 
     new_folder = base_dir / ciudad
+    archived_detail = ""
     if not new_folder.exists():
         # Todavía no se había aplicado esta acción antes: hay que
         # encontrar la carpeta "de fábrica" (código detectado
         # dinámicamente, ver docstring del módulo) y renombrarla.
-        source_folder = _find_factory_folder(base_dir, ciudad)
+        source_folder, archived_detail = _find_factory_folder(base_dir, ciudad)
         source_folder.rename(new_folder)
 
     xrf_file = _find_xrf_file(new_folder)
@@ -163,7 +185,10 @@ def apply_shares_configuration(
     with new_file.open("w", encoding="utf-8", newline="") as f:
         f.write(text)
 
-    return f"Carpeta: {new_folder} | Archivo: {new_file}"
+    detail = f"Carpeta: {new_folder} | Archivo: {new_file}"
+    if archived_detail:
+        detail = f"{detail} | {archived_detail}"
+    return detail
 
 
 def _is_xrf_filename(name: str) -> bool:
@@ -213,19 +238,71 @@ def _find_xrf_file(folder: Path) -> Path:
     return matches[0]
 
 
-def _find_factory_folder(base_dir: Path, ciudad: str) -> Path:
+def _archive_older_xrf_matches(folder: Path, matches: list[Path]) -> str:
+    """Cuando `folder` (una carpeta candidata real, con al menos un
+    archivo `.XRF` válido) tiene MÁS de uno, se asume que el más reciente
+    (mayor fecha de modificación) es el que el instalador de Shares 5.0
+    acaba de dejar en esta corrida -- cada vez que se reinstala, Shares
+    reescribe su propio archivo de fábrica, así que queda con fecha "de
+    ahora"; los demás son de una configuración anterior de ese mismo
+    equipo (otra ciudad) que nunca se borró. Esos archivos más viejos se
+    MUEVEN (nunca se borran) a `folder / ARCHIVE_SUBDIR_NAME`, evitando
+    colisiones de nombre si ya había algo archivado ahí de antes (se les
+    agrega un sufijo numérico en vez de sobrescribir). Devuelve un detalle
+    corto para el mensaje final, o cadena vacía si no había nada que
+    archivar (`matches` con 0 o 1 elemento).
+
+    Nota: esto asume que la fecha de modificación es un indicador
+    confiable de cuál archivo es el vigente -- válido en el caso real que
+    motivó esto (un equipo reutilizado, con un archivo mucho más viejo que
+    el resto), pero si dos archivos quedaran con fechas casi idénticas
+    (ej. restaurados juntos desde una imagen de disco), el más nuevo por
+    apenas unos segundos "gana" de todas formas; no hay forma de detectar
+    ese empate desde acá."""
+    if len(matches) <= 1:
+        return ""
+
+    newest = max(matches, key=lambda f: f.stat().st_mtime)
+    older = [f for f in matches if f != newest]
+
+    archive_dir = folder / ARCHIVE_SUBDIR_NAME
+    archive_dir.mkdir(exist_ok=True)
+
+    archived_names: list[str] = []
+    for f in older:
+        destination = archive_dir / f.name
+        if destination.exists():
+            # Ya había algo archivado antes con ese mismo nombre -- se le
+            # agrega un sufijo numérico en vez de sobrescribirlo (nunca se
+            # pierde un archivo por esto).
+            counter = 1
+            while destination.exists():
+                destination = archive_dir / f"{f.stem} ({counter}){f.suffix}"
+                counter += 1
+        f.rename(destination)
+        archived_names.append(f.name)
+
+    return (
+        f"se archivó {len(archived_names)} archivo(s) '{FILE_PREFIX}*{FILE_SUFFIX}' anterior(es) "
+        f"en '{archive_dir}': {', '.join(archived_names)}"
+    )
+
+
+def _find_factory_folder(base_dir: Path, ciudad: str) -> tuple[Path, str]:
     """Busca, entre las subcarpetas DIRECTAS de `base_dir` (que no sea ya
     la de CIUDAD), cuál contiene un archivo `LTPCM<código>.XRF` — esa es la
     carpeta "de fábrica" que Shares deja siempre, sea cual sea el código de
     3 letras que use esa versión del instalador (ver docstring del
-    módulo). Lanza `SharesConfigError` si no encuentra ninguna candidata, si
-    encuentra más de una (caso ambiguo entre carpetas — revisar a mano), o
-    si una misma carpeta candidata tiene más de un archivo `.XRF` válido
-    (caso ambiguo DENTRO de la carpeta — ver `_list_xrf_matches`; visto en
-    un equipo real: un archivo viejo de una ciudad anterior que nunca se
-    borró, junto al archivo de fábrica recién instalado)."""
-    candidates = []
-    ambiguous_folders: list[tuple[Path, list[Path]]] = []
+    módulo). Devuelve `(carpeta, detalle)` — `detalle` es `""` si esa
+    carpeta tenía un solo `.XRF` (caso normal), o el mensaje de
+    `_archive_older_xrf_matches()` si tenía más de uno y se archivaron los
+    más viejos. Lanza `SharesConfigError` si no encuentra ninguna
+    candidata, o si encuentra más de una carpeta candidata (caso ambiguo
+    ENTRE carpetas -- eso sí hay que revisarlo a mano, a diferencia de
+    tener varios `.XRF` dentro de UNA misma carpeta, que se resuelve solo
+    -- ver arriba)."""
+    candidates: list[Path] = []
+    archived_detail = ""
     for entry in sorted(base_dir.iterdir()):
         if not entry.is_dir() or entry.name.upper() == ciudad.upper():
             continue
@@ -233,20 +310,12 @@ def _find_factory_folder(base_dir: Path, ciudad: str) -> Path:
         if len(matches) == 1:
             candidates.append(entry)
         elif len(matches) > 1:
-            ambiguous_folders.append((entry, matches))
+            archived_detail = _archive_older_xrf_matches(entry, matches)
+            candidates.append(entry)
         # len(matches) == 0: esta carpeta no tiene ningún .XRF -- no es
         # candidata, se ignora sin más (ej. la carpeta "Browser" que deja
         # el propio Shares junto a la de configuración).
 
-    if ambiguous_folders:
-        entry, matches = ambiguous_folders[0]
-        names = ", ".join(f.name for f in matches)
-        raise SharesConfigError(
-            f"La carpeta '{entry}' tiene más de un archivo '{FILE_PREFIX}*{FILE_SUFFIX}' ({names}) — no se "
-            "puede saber cuál es el correcto (puede ser un archivo de una configuración anterior que quedó "
-            "ahí sin borrarse); revisa manualmente esa carpeta y borra o renombra el que no corresponda a "
-            "esta estación."
-        )
     if not candidates:
         raise SharesConfigError(
             f"No se encontró ninguna carpeta con un archivo '{FILE_PREFIX}*{FILE_SUFFIX}' dentro de "
@@ -259,7 +328,7 @@ def _find_factory_folder(base_dir: Path, ciudad: str) -> Path:
             f"Se encontraron varias carpetas candidatas dentro de '{base_dir}' ({names}) — no se puede "
             "saber cuál corresponde a esta estación, revisa manualmente cuál es la correcta."
         )
-    return candidates[0]
+    return candidates[0], archived_detail
 
 
 # --------------------------------------------------------------------------

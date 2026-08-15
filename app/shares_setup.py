@@ -13,6 +13,15 @@ En el mismo orden que el `.bat` original:
    Everyone:(OI)(CI)F`.
 2. Copia las fuentes que necesita Shares (`*.fon`, `*.ttf`) desde
    `C:\\LTP\\Fonts` (donde ya las deja el `.msi`) a `C:\\Windows\\Fonts`.
+   Esta copia se hace con la función nativa de Windows `CopyFileW`
+   (`kernel32.dll`, vía `ctypes`) y no con `shutil.copy` -- en un equipo
+   real con Windows 11 se confirmó que `shutil.copy` (que abre origen y
+   destino a través de la capa de E/S de Python) puede fallar con
+   `OSError: [Errno 22] Invalid argument` justo al copiar hacia
+   `C:\\Windows\\Fonts` (carpeta especial de Shell), mientras que la copia
+   nativa de Windows -- el mismo mecanismo de fondo que usaba el `copy` de
+   CMD en el `.bat` original, y que sigue funcionando sin problema -- no
+   tiene ese problema. Ver `_win32_copy_file()` más abajo.
 3. Importa `C:\\LTP\\Fonts\\ALCFONXP.REG` con `regedit /s` (registra esas
    fuentes en el sistema).
 4. Borra el acceso directo que el propio instalador de Shares deja en el
@@ -31,7 +40,7 @@ que falla -- ver `app/installer.py` (`installer_type: "python"`,
 `_PYTHON_STEP_HANDLERS`)."""
 from __future__ import annotations
 
-import shutil
+import ctypes
 import subprocess
 from pathlib import Path
 
@@ -96,11 +105,34 @@ def _grant_full_control(ltp_dir: Path = LTP_DIR) -> str:
     return f"permisos Everyone en {ltp_dir}"
 
 
+def _win32_copy_file(src: Path, dst: Path) -> None:
+    """Copia `src` a `dst` con la función nativa de Windows `CopyFileW`
+    (`kernel32.dll`, vía `ctypes`) en vez de `shutil.copy`.
+
+    Motivo: en un equipo real con Windows 11 se confirmó que
+    `shutil.copy` -- que abre origen y destino a través de la capa de E/S
+    de Python -- puede fallar con `OSError: [Errno 22] Invalid argument`
+    específicamente al copiar hacia la carpeta especial `C:\\Windows\\Fonts`.
+    El `.bat` original nunca tuvo ese problema porque usaba el `copy` de
+    CMD, que -- igual que Explorer, xcopy o robocopy -- por debajo llama a
+    esta misma función de la API de Win32. Llamar a `CopyFileW`
+    directamente evita el problema en vez de solo intentar sortearlo con
+    otro mecanismo que tenga la misma limitación."""
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CopyFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_bool]
+    kernel32.CopyFileW.restype = ctypes.c_bool
+    if not kernel32.CopyFileW(str(src), str(dst), False):
+        raise ctypes.WinError()
+
+
 def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDOWS_FONTS_DIR) -> str:
     """Paso 2 del .bat: copia `*.fon` y `*.ttf` desde `fonts_src_dir` (ya
-    instaladas ahí por el .msi de Shares 5.0) a `fonts_dst_dir`. Lanza
-    `SharesSetupError` si `fonts_src_dir` no existe -- si no hay ningún
-    archivo `.fon`/`.ttf` adentro, no es un error (nada que copiar)."""
+    instaladas ahí por el .msi de Shares 5.0) a `fonts_dst_dir`, usando
+    `_win32_copy_file()` (ver su docstring: no se usa `shutil.copy` porque
+    falla con Errno 22 al copiar hacia `C:\\Windows\\Fonts` en Windows 11).
+    Lanza `SharesSetupError` si `fonts_src_dir` no existe -- si no hay
+    ningún archivo `.fon`/`.ttf` adentro, no es un error (nada que
+    copiar)."""
     if not fonts_src_dir.exists():
         raise SharesSetupError(f"No se encontró la carpeta de fuentes: {fonts_src_dir}")
 
@@ -108,7 +140,7 @@ def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDO
     for pattern in ("*.fon", "*.ttf"):
         for font_file in sorted(fonts_src_dir.glob(pattern)):
             try:
-                shutil.copy(font_file, fonts_dst_dir / font_file.name)
+                _win32_copy_file(font_file, fonts_dst_dir / font_file.name)
             except OSError as exc:
                 raise SharesSetupError(f"No se pudo copiar la fuente '{font_file}': {exc}")
             copied.append(font_file.name)

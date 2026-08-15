@@ -322,7 +322,14 @@ Python del `.bat` que antes se corría a mano después de instalar Shares
 1. `icacls C:\LTP /grant Everyone:(OI)(CI)F` — da control total a
    cualquier usuario del equipo sobre esa carpeta.
 2. Copia las fuentes (`*.fon`, `*.ttf`) que el propio `.msi` deja en
-   `C:\LTP\Fonts` hacia `C:\Windows\Fonts`.
+   `C:\LTP\Fonts` hacia `C:\Windows\Fonts`. Esta copia usa la función
+   nativa de Windows `CopyFileW` (`kernel32.dll`, vía `ctypes`,
+   `_win32_copy_file()`) y no `shutil.copy` de Python — en un equipo real
+   con Windows 11 se confirmó que `shutil.copy` puede fallar con `OSError:
+   [Errno 22] Invalid argument` justo al copiar hacia `C:\Windows\Fonts`
+   (carpeta especial de Shell), mientras que la copia nativa de Windows —
+   el mismo mecanismo que usaba el `copy` de CMD en el `.bat` original, y
+   que nunca tuvo este problema — funciona sin inconvenientes.
 3. Importa `C:\LTP\Fonts\ALCFONXP.REG` con `regedit /s` (registra esas
    fuentes en Windows).
 4. Borra el acceso directo que el instalador de Shares deja solo en el

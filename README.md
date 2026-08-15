@@ -329,7 +329,16 @@ Python del `.bat` que antes se corría a mano después de instalar Shares
    [Errno 22] Invalid argument` justo al copiar hacia `C:\Windows\Fonts`
    (carpeta especial de Shell), mientras que la copia nativa de Windows —
    el mismo mecanismo que usaba el `copy` de CMD en el `.bat` original, y
-   que nunca tuvo este problema — funciona sin inconvenientes.
+   que nunca tuvo este problema — funciona sin inconvenientes. Si una
+   fuente ya estaba copiada (mismo tamaño que la de origen — por ejemplo
+   al reintentar la instalación en un equipo ya configurado antes), no se
+   vuelve a copiar: además de innecesario, en ese estado Windows ya tiene
+   esa fuente cargada/mapeada como fuente activa del sistema, y
+   `CopyFileW` no puede sobrescribirla (`WinError 1224: The requested
+   operation cannot be performed on a file with a user-mapped section
+   open`, también visto en un equipo real). Si aun así se llega a intentar
+   la copia y Windows devuelve justo ese error, se trata igual como "ya
+   estaba instalada" en vez de como una falla.
 3. Importa `C:\LTP\Fonts\ALCFONXP.REG` con `regedit /s` (registra esas
    fuentes en Windows).
 4. Borra el acceso directo que el instalador de Shares deja solo en el

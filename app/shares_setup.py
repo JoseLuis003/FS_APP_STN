@@ -21,7 +21,13 @@ En el mismo orden que el `.bat` original:
    `C:\\Windows\\Fonts` (carpeta especial de Shell), mientras que la copia
    nativa de Windows -- el mismo mecanismo de fondo que usaba el `copy` de
    CMD en el `.bat` original, y que sigue funcionando sin problema -- no
-   tiene ese problema. Ver `_win32_copy_file()` más abajo.
+   tiene ese problema. Ver `_win32_copy_file()` más abajo. Si la fuente ya
+   estaba copiada (misma fuente, mismo tamaño -- por ejemplo, al
+   reintentar la instalación en un equipo ya configurado antes), no se
+   vuelve a copiar: además de ser innecesario, Windows puede tener esa
+   fuente ya cargada/mapeada como fuente activa del sistema, y en ese
+   estado `CopyFileW` no puede sobrescribirla (`WinError 1224`, visto en
+   un equipo real).
 3. Importa `C:\\LTP\\Fonts\\ALCFONXP.REG` con `regedit /s` (registra esas
    fuentes en el sistema).
 4. Borra el acceso directo que el propio instalador de Shares deja en el
@@ -125,6 +131,14 @@ def _win32_copy_file(src: Path, dst: Path) -> None:
         raise ctypes.WinError()
 
 
+# Código de error de Windows (WinError 1224) que devuelve CopyFileW cuando
+# el archivo destino ya está mapeado en memoria por el sistema -- típico
+# quando esa fuente ya quedó instalada (y por lo tanto ya está cargada
+# como fuente activa) en una corrida anterior de este mismo paso sobre el
+# mismo equipo. Ver el segundo `except` de `_copy_fonts()` más abajo.
+ERROR_USER_MAPPED_FILE = 1224
+
+
 def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDOWS_FONTS_DIR) -> str:
     """Paso 2 del .bat: copia `*.fon` y `*.ttf` desde `fonts_src_dir` (ya
     instaladas ahí por el .msi de Shares 5.0) a `fonts_dst_dir`, usando
@@ -132,16 +146,39 @@ def _copy_fonts(fonts_src_dir: Path = FONTS_SRC_DIR, fonts_dst_dir: Path = WINDO
     falla con Errno 22 al copiar hacia `C:\\Windows\\Fonts` en Windows 11).
     Lanza `SharesSetupError` si `fonts_src_dir` no existe -- si no hay
     ningún archivo `.fon`/`.ttf` adentro, no es un error (nada que
-    copiar)."""
+    copiar).
+
+    Si una fuente ya está copiada en `fonts_dst_dir` con el mismo tamaño
+    que la de origen, no se vuelve a copiar -- se asume ya instalada (esto
+    es lo normal al correr este paso más de una vez sobre el mismo
+    equipo, por ejemplo al reintentar una instalación). Esto también evita
+    de raíz un error real visto en un equipo con Windows 11: si la fuente
+    ya está instalada, Windows la tiene mapeada en memoria como fuente
+    activa del sistema, y `CopyFileW` no puede sobrescribir un archivo en
+    ese estado -- devuelve `WinError 1224` ("The requested operation
+    cannot be performed on a file with a user-mapped section open"). Como
+    red de seguridad adicional, si aun así se intenta copiar (por ejemplo,
+    porque el tamaño no coincide) y Windows devuelve justo ese error, se
+    trata como "ya estaba instalada" en vez de como una falla real -- ese
+    código de error específico solo ocurre cuando el archivo ya existe y
+    ya está en uso como fuente del sistema, lo cual en la práctica
+    significa que ya está instalada."""
     if not fonts_src_dir.exists():
         raise SharesSetupError(f"No se encontró la carpeta de fuentes: {fonts_src_dir}")
 
     copied: list[str] = []
     for pattern in ("*.fon", "*.ttf"):
         for font_file in sorted(fonts_src_dir.glob(pattern)):
+            dst_file = fonts_dst_dir / font_file.name
+            if dst_file.exists() and dst_file.stat().st_size == font_file.stat().st_size:
+                copied.append(font_file.name)
+                continue
             try:
-                _win32_copy_file(font_file, fonts_dst_dir / font_file.name)
+                _win32_copy_file(font_file, dst_file)
             except OSError as exc:
+                if getattr(exc, "winerror", None) == ERROR_USER_MAPPED_FILE and dst_file.exists():
+                    copied.append(font_file.name)
+                    continue
                 raise SharesSetupError(f"No se pudo copiar la fuente '{font_file}': {exc}")
             copied.append(font_file.name)
 

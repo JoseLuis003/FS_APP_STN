@@ -38,8 +38,11 @@
         },
         {
           "items": [
-            { "id": "bfirst",           "label": "BFirst",                    "installer": "BFirst/setupbolapp.exe",       "silent_args": "/S /v/qn",                        "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D",
-              "extra_steps": [ { "installer": "bfirst_assets", "silent_args": "", "installer_type": "python" } ] },
+            { "id": "bfirst",           "label": "BFirst",                    "installer": "netfx35_setup",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D",
+              "extra_steps": [
+                { "installer": "BFirst/setupbolapp.exe", "silent_args": "/S /v/qn", "installer_type": "exe" },
+                { "installer": "bfirst_assets", "silent_args": "", "installer_type": "python" }
+              ] },
             { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/passive /norestart",       "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8",
               "extra_steps": [
                 { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/NoDlg /product=SAPGUI", "installer_type": "exe" },
@@ -63,7 +66,7 @@
         },
         {
           "items": [
-            { "id": "netfx35",          "label": "NetFX35",                   "installer": "NetFX35/INSTALL.cmd",          "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "netfx35",          "label": "NetFX35",                   "installer": "netfx35_setup",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" }
           ]
         }
       ]

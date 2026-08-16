@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 from app.appshell_post_install import run_appshell_post_install
 from app.branding_setup import apply_bginfo_registration, apply_branding_setup
 from app.config import AppItem, LOGS_DIR
+from app.netfx35_setup import ensure_netfx35_installed
 from app.sap_gui_setup import apply_sap_gui_setup
 from app.shares_setup import run_ltp_shares_post_install
 from app.shortcuts import (
@@ -98,6 +99,7 @@ def _python_step_handlers() -> dict:
         "bfirst_assets": copy_bfirst_assets_and_shortcut,
         "sap_gui_setup": apply_sap_gui_setup,
         "vpn_setup": apply_vpn_setup,
+        "netfx35_setup": ensure_netfx35_installed,
     }
 
 

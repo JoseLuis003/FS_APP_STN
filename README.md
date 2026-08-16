@@ -198,18 +198,58 @@ subcarpeta.
 
 ### BFirst (`app/shortcuts.py`, `copy_bfirst_assets_and_shortcut`)
 
-Paso extra (`installer_type: "python"`, `bfirst_assets`) del ítem
-`bfirst` (2da columna), portado de `BFirst\copy.bat`. A diferencia de
-"Shortcuts"/"ShortCut-MTO" de arriba (que copian una carpeta `Copaair`
-entera, de forma recursiva), acá el origen no es una carpeta: es un
-único archivo de ícono suelto (`bytemaster_logoprincipalqqq.ico`) que se
-copia a `C:\copaair` (creando la carpeta si no existe), y un único
-acceso directo (`BFIRST.url`) que se copia a Public Desktop. El `.bat`
-original usaba `xcopy /S /I /E /Y` para el ícono — como el origen es un
-archivo, no una carpeta, las banderas recursivas (`/S`/`/E`) no tenían
-ningún efecto real; lo único que importaba era `/I` (crear `C:\Copaair`
-si no existía) y `/Y` (sobrescribir sin preguntar), que es justamente lo
-que hace este paso.
+El ítem `bfirst` (2da columna) tiene 3 pasos, en este orden:
+
+1. **`netfx35_setup`** (`installer_type: "python"`, ahora el instalador
+   PRINCIPAL del ítem — ver `app/netfx35_setup.py`,
+   `ensure_netfx35_installed`). Confirmado en una VM de prueba real:
+   `BFirst\setupbolapp.exe` (Bytemaster OnLine App) exige tener
+   instalado Microsoft .NET Framework 3.5 SP1 ANTES de poder instalarse
+   — si no está, muestra el diálogo "Microsoft .NET Framework 3.5 SP1
+   needs to be installed for this installation to continue." y aborta
+   (visto como código de salida 1603, sin más detalle en stdout/stderr,
+   típico de un instalador MSI/InstallShield que revisa sus propios
+   prerequisitos antes de arrancar). .NET Framework 3.5 viene
+   DESHABILITADO por defecto en instalaciones limpias de Windows 10/11
+   (a diferencia de .NET 4.x, que sí viene integrado de fábrica), así
+   que hay que habilitarlo antes de intentar instalar BFirst.
+
+   Este paso es un puerto directo de `NetFX35\INSTALL.cmd`
+   (`DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /LimitAccess
+   /Source:"...\NetFX35\sources\sxs"` — instala SIEMPRE desde los
+   archivos locales que vienen junto a los demás instaladores, nunca
+   Windows Update, porque las estaciones de Copa muchas veces no tienen
+   salida a internet). Única diferencia deliberada con el `.cmd`
+   original: ese `.cmd` siempre terminaba con `Exit 0` sin mirar el
+   código de salida real de DISM, así que un fallo real (ej. la
+   carpeta `sources\sxs` no viene junto a los demás instaladores)
+   quedaba enmascarado como "éxito" y recién se notaba después, cuando
+   BFirst fallaba con el 1603 de siempre. `ensure_netfx35_installed()`
+   sí revisa ese código de salida y lanza un error claro si falla —
+   fail loud, como el resto de la app.
+
+   El mismo handler `netfx35_setup` también sigue disponible como ítem
+   independiente y manual del catálogo ("NetFX35", 3ra columna) — no se
+   quita, por si hace falta correrlo solo para algún otro instalador
+   que dependa de .NET 3.5 (correrlo dos veces no tiene efecto
+   negativo: es idempotente, igual que el DISM que lo respalda).
+2. `BFirst\setupbolapp.exe` (el instalador real de BFirst, antes el
+   paso principal del ítem — ahora el 1er `extra_step`, silent switch
+   `/S /v/qn` sin comillas, confirmado como correcto contra la ayuda de
+   línea de comandos del propio instalador InstallShield del vendor).
+3. **`bfirst_assets`** (`installer_type: "python"`, 2do `extra_step`),
+   portado de `BFirst\copy.bat`. A diferencia de
+   "Shortcuts"/"ShortCut-MTO" de arriba (que copian una carpeta
+   `Copaair` entera, de forma recursiva), acá el origen no es una
+   carpeta: es un único archivo de ícono suelto
+   (`bytemaster_logoprincipalqqq.ico`) que se copia a `C:\copaair`
+   (creando la carpeta si no existe), y un único acceso directo
+   (`BFIRST.url`) que se copia a Public Desktop. El `.bat` original
+   usaba `xcopy /S /I /E /Y` para el ícono — como el origen es un
+   archivo, no una carpeta, las banderas recursivas (`/S`/`/E`) no
+   tenían ningún efecto real; lo único que importaba era `/I` (crear
+   `C:\Copaair` si no existía) y `/Y` (sobrescribir sin preguntar), que
+   es justamente lo que hace este paso.
 
 ### SAP GUI 7.8 (`app/sap_gui_setup.py`)
 

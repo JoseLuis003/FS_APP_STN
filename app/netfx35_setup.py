@@ -1,0 +1,120 @@
+"""Puerto a Python de `NetFX35\\INSTALL.cmd`. Usado en 2 lugares del
+catálogo (ver `config/apps.json`):
+
+1. Ítem independiente "NetFX35" (3ra columna) -- para correrlo a mano
+   si hace falta, sin depender de otro ítem.
+2. 1er paso (ahora el instalador PRINCIPAL) del ítem "bfirst" (2da
+   columna) -- confirmado en una VM de prueba real que
+   `BFirst\\setupbolapp.exe` exige tener .NET Framework 3.5 SP1
+   instalado ANTES de poder instalarse (si no está, muestra el diálogo
+   "Microsoft .NET Framework 3.5 SP1 needs to be installed for this
+   installation to continue." y aborta con código de salida 1603).
+
+El `.cmd` original:
+
+    @echo off
+    DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /LimitAccess /Source:"C:\\CM APPS\\APPS\\NetFX35\\sources\\sxs"
+    echo ========= PROCESO TERMINADO =========
+    echo ===== CERRANDO AUTOMATICAMENTE ======
+    ping -n 5 127.0.0.1 > nul
+    Exit 0
+
+.NET Framework 3.5 viene DESHABILITADO por defecto en instalaciones
+limpias de Windows 10/11 (a diferencia de .NET 4.x, que sí viene
+integrado de fábrica) -- es una "característica opcional de Windows"
+que hay que habilitar explícitamente. El `.cmd` usa `/LimitAccess` +
+`/Source:"...\\NetFX35\\sources\\sxs"` para instalarla SIEMPRE desde los
+archivos locales que vienen junto a los demás instaladores, sin tocar
+Windows Update -- necesario porque las estaciones de Copa muchas veces
+no tienen salida a internet. `ensure_netfx35_installed()` arma el mismo
+comando, resolviendo esa ruta de origen a partir de
+`installers_base_path` (a diferencia de la mayoría de los pasos
+"python" de este proyecto, este SÍ necesita ese argumento: sin él no
+hay forma de ubicar la carpeta `sources\\sxs`).
+
+Diferencia deliberada con el `.cmd` original: el `.cmd` siempre
+terminaba con `Exit 0` sin mirar el código de salida real de DISM -- un
+error real (ej. la carpeta `sources\\sxs` no viene junto a los demás
+instaladores, o viene incompleta) quedaba enmascarado como "éxito", y
+recién se notaba más tarde cuando `BFirst\\setupbolapp.exe` fallaba con
+el críptico 1603 de siempre. Esta versión sí revisa el código de salida
+de DISM y lanza `NetFx35SetupError` con el detalle si falla -- fail
+loud, como el resto de la app (ver `SUCCESS_CODES` en
+`app/installer.py`): el objetivo de correr esto automáticamente antes
+de BFirst es justamente detectar el problema ACÁ, con un mensaje claro,
+no dejar que se propague."""
+from __future__ import annotations
+
+import ntpath
+import subprocess
+
+# DISM puede tardar bastante si la fuente local está en un disco lento o
+# si igual necesita revisar/completar archivos.
+_TIMEOUT_SECONDS = 600
+
+# Mismo criterio que el resto de la app para este código (ver
+# SUCCESS_CODES en app/installer.py): 3010 = éxito, pide reiniciar para
+# terminar de aplicarse.
+_SUCCESS_CODES = {0, 3010}
+
+# Carpeta de origen (relativa a `installers_base_path`) con los archivos
+# de la característica NetFx3, igual que el `.cmd` original.
+_SOURCE_SUBPATH_PARTS = ("NetFX35", "sources", "sxs")
+
+
+class NetFx35SetupError(Exception):
+    """Error esperado si no se pudo habilitar .NET Framework 3.5. El
+    mensaje ya viene listo para mostrárselo tal cual al técnico."""
+
+
+def _build_dism_command(installers_base_path: str) -> list[str]:
+    # `ntpath.join` (no `os.path.join`/`pathlib.Path`) a propósito: arma
+    # SIEMPRE una ruta con separador "\\", sin importar en qué SO corra
+    # este código -- necesario porque `installers_base_path` es una ruta
+    # de Windows (ej. "C:\\CM APPS\\APPS") aunque se desarrolle y pruebe
+    # en Linux/Mac, donde `pathlib.Path` la trataría como ruta POSIX.
+    source_dir = ntpath.join(installers_base_path, *_SOURCE_SUBPATH_PARTS)
+    return [
+        "dism.exe",
+        "/Online",
+        "/Enable-Feature",
+        "/FeatureName:NetFx3",
+        "/All",
+        "/LimitAccess",
+        f"/Source:{source_dir}",
+    ]
+
+
+def ensure_netfx35_installed(installers_base_path: str) -> str:
+    """Habilita ".NET Framework 3.5 (incluye .NET 2.0 y 3.0)" vía DISM,
+    usando como fuente los archivos locales en
+    `<installers_base_path>\\NetFX35\\sources\\sxs` (nunca Windows
+    Update) -- es idempotente: si ya estaba habilitada, DISM lo reporta
+    como éxito igual, sin reinstalar nada.
+
+    Pensado para colgarse como paso `installer_type: "python"`, ya sea
+    como instalador principal (ítems "NetFX35" y "bfirst") o como
+    `extra_step` de algún otro ítem que también dependa de .NET 3.5.
+
+    Lanza `NetFx35SetupError` si DISM falla -- por ejemplo, si la
+    carpeta `NetFX35\\sources\\sxs` no vino junto a los demás
+    instaladores, o si el equipo tampoco tiene acceso a Windows Update
+    como alternativa (DISM necesita alguna de las 2 fuentes)."""
+    command = _build_dism_command(installers_base_path)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise NetFx35SetupError("DISM (.NET Framework 3.5): tiempo de espera agotado.")
+    except OSError as exc:
+        raise NetFx35SetupError(f"DISM (.NET Framework 3.5): no se pudo ejecutar -- {exc}")
+
+    if result.returncode not in _SUCCESS_CODES:
+        detail = (result.stderr or result.stdout or "").strip()[:500]
+        msg = f"No se pudo habilitar .NET Framework 3.5 (DISM terminó con código {result.returncode})"
+        if detail:
+            msg += f" -- {detail}"
+        raise NetFx35SetupError(msg)
+
+    if result.returncode == 3010:
+        return ".NET Framework 3.5 habilitado vía DISM (pide reiniciar para terminar de aplicarse)"
+    return ".NET Framework 3.5 ya estaba habilitado (o se habilitó correctamente) vía DISM"

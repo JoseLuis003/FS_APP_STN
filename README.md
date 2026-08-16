@@ -112,16 +112,30 @@ falle detiene el resto y se marca como error.
 Ítem `installer_type: "python"` (`stn_shortcuts`), portado de
 `Scripts\Shortcut STN.bat`. Copia la carpeta `Copaair` completa (recursiva,
 recursos compartidos con "AJUSTES NECESARIOS", ver abajo) a `C:\copaair`,
-y después 10 accesos directos ya armados (`.lnk`/`.url`: WorldTracer,
-AIMS, COPA ACADEMY, CORREO WEB, LOPA, RED, SABRE, Flight Radar24, EXCEL,
-WORD) al escritorio público. A diferencia de los accesos directos de
-Shares (que se arman dinámicamente vía COM, ver más abajo), estos ya
-vienen armados de antemano en la carpeta de instaladores — este paso solo
-los copia, igual que hace `app/appshell_post_install.py` con los accesos
+y después **TODO archivo que encuentre suelto** en `Scripts\Shortcut\` al
+escritorio público, sin importar su nombre (originalmente eran 10
+accesos directos ya armados -- `.lnk`/`.url`: WorldTracer, AIMS, COPA
+ACADEMY, CORREO WEB, LOPA, RED, SABRE, Flight Radar24, EXCEL, WORD --
+pero ya no hace falta que coincidan exactamente esos nombres: agregar,
+quitar o renombrar un acceso directo en esa carpeta ya no requiere tocar
+el código). Antes se exigía una lista fija de 10 nombres exactos y
+fallaba si faltaba alguno (visto en pruebas reales con `LOPA.lnk`
+faltante); ahora solo falla si la carpeta `Shortcut\` no existe, o si
+existe pero está vacía. A diferencia de los accesos directos de Shares
+(que se arman dinámicamente vía COM, ver más abajo), estos ya vienen
+armados de antemano en la carpeta de instaladores — este paso solo los
+copia, igual que hace `app/appshell_post_install.py` con los accesos
 directos de AppShell. Siempre sobrescribe (el `.bat` original no pasaba
 `/Y` en estas copias puntuales, así que en teoría preguntaba antes de
 sobrescribir — sin efecto real en una instalación desatendida sin entrada
 interactiva disponible).
+
+**"ShortCut-MTO" (más abajo) sigue con una lista fija de nombres** —
+a diferencia de `Scripts\Shortcut\` (exclusiva de accesos directos), la
+carpeta `MTO\` comparte espacio con otros instaladores de esa misma
+columna (IGView, cortona3d.msi, Toolbox Print); copiar "todo lo que haya
+ahí" también copiaría esos instaladores al escritorio público, así que
+para MTO no aplica el mismo cambio.
 
 ### AJUSTES NECESARIOS (`app/workstation_settings.py`)
 
@@ -459,13 +473,31 @@ HOSTNAME del panel. En orden:
    en el paso 1 y le cambia las 3 letras del código por el valor de CIUDAD
    (ej. `LTPCMPTY.XRF` -> `LTPCMMDE.XRF`).
 3. Abre ese archivo, reemplaza cualquier otra aparición de ese código por
-   el valor de CIUDAD, y en la línea `WORKSTATION_NAME=CHECKIN` cambia la
-   clave `WORKSTATION_NAME` por el valor de HOSTNAME (queda, por ejemplo,
-   `LTP-JB=CHECKIN`).
+   el valor de CIUDAD, y busca la línea `<clave>=CHECKIN` (sea cual sea
+   `<clave>`) para reemplazar esa clave por el valor de HOSTNAME, dejando
+   `=CHECKIN` intacto (ej. `*WKSNAME=CHECKIN` -> `LTP-JB=CHECKIN`).
+
+   **Esta línea también se detecta dinámicamente, igual que el código de
+   CIUDAD del paso 1** — la clave real (`*WKSNAME`, con el asterisco
+   incluido, confirmado contra un `.XRF` real) ya cambió una vez entre
+   versiones del instalador de Shares (antes se había asumido
+   `WORKSTATION_NAME`, sin verificarlo contra un archivo real). En vez de
+   depender de un nombre de clave que una futura versión podría volver a
+   cambiar, la app busca la línea por su **valor de fábrica** (`CHECKIN`,
+   que se mantuvo igual entre esas 2 versiones pese a que la clave
+   cambió) — sea cual sea el texto que tenga antes del `=`. Si el archivo
+   no tiene ninguna línea `<algo>=CHECKIN`, o tiene más de una (ambiguo),
+   no se adivina: se lanza un error claro en vez de dejar el archivo a
+   medio configurar.
 
 Es idempotente: si se vuelve a presionar INSTALAR después de que la
 carpeta y el archivo ya quedaron renombrados, los reutiliza en vez de
-fallar por no encontrar la carpeta de fábrica.
+fallar por no encontrar la carpeta de fábrica. La línea de nombre de
+estación es la excepción: como su ancla de detección (`=CHECKIN`) queda
+intacta a propósito, sí se vuelve a actualizar en cada corrida — así que
+cambiar el HOSTNAME y volver a presionar INSTALAR corrige el nombre de
+estación, en vez de quedar pegado para siempre al primero que se haya
+aplicado.
 
 Si una misma carpeta candidata tiene MÁS de un archivo `.XRF` válido
 adentro — visto en un equipo real: un equipo reutilizado, con el archivo

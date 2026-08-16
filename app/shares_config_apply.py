@@ -49,13 +49,32 @@ valores de CIUDAD y HOSTNAME capturados en el panel
 3. Abre ese archivo y:
    a. Reemplaza cualquier aparición del código detectado en el paso 1/2
       (ej. "PTY") en el contenido por el valor de CIUDAD.
-   b. En la línea que empieza con `WORKSTATION_NAME=`, reemplaza esa clave
-      por el valor de HOSTNAME, dejando el resto de la línea intacto (ej.
-      `WORKSTATION_NAME=CHECKIN` -> `LTP-JB=CHECKIN`).
+   b. Busca la línea `<clave>=CHECKIN` (sea cual sea `<clave>`) y
+      reemplaza esa clave por el valor de HOSTNAME, dejando `=CHECKIN`
+      intacto (ej. `*WKSNAME=CHECKIN` -> `LTP-JB=CHECKIN`).
+
+      La clave real de esta línea **cambió entre versiones** del
+      instalador de Shares -- se había asumido `WORKSTATION_NAME`, y
+      resultó ser `*WKSNAME` en un archivo real (con el asterisco
+      incluido, confirmado por el técnico). En vez de volver a depender
+      de un nombre de clave fijo (que una futura versión podría cambiar
+      de nuevo), esta línea se **detecta dinámicamente por su VALOR de
+      fábrica** (`CHECKIN`, que se mantuvo igual entre esas 2 versiones
+      pese a que la clave cambió) -- mismo criterio que ya se usa para
+      el código de CIUDAD en el paso 1. Si el archivo no tiene ninguna
+      línea `<algo>=CHECKIN`, o tiene más de una (ambiguo), no se
+      adivina: se lanza `SharesConfigError` con el detalle.
 
    Se hace primero (a) y después (b) — y no al revés — para que, si el
    HOSTNAME llegara a contener ese código como parte de su nombre, el
    reemplazo global del paso (a) no lo toque por accidente.
+
+   A diferencia de la carpeta/archivo del paso 1/2 (que si ya están
+   renombrados no se vuelven a tocar), el paso (b) SÍ se reaplica en
+   cada corrida: como el ancla de detección (`=CHECKIN`) queda intacta a
+   propósito, volver a presionar INSTALAR con un HOSTNAME distinto
+   actualiza la clave al valor más reciente -- no se queda pegado para
+   siempre al primer HOSTNAME que se haya aplicado.
 
 Por último, si la casilla CONTINGENCIA del panel está marcada,
 `run_contingencia_script()` corre `LTP TRAVEL DOC\Contingencia.bat` — a
@@ -148,9 +167,17 @@ _CODE_LENGTH = 3
 # borró y quedó junto al archivo de fábrica recién instalado.
 ARCHIVE_SUBDIR_NAME = "_config_anterior"
 
-# Clave de la línea que identifica el nombre de estación dentro del .XRF.
-WORKSTATION_KEY = "WORKSTATION_NAME"
-_WORKSTATION_PATTERN = re.compile(rf"(?m)^{re.escape(WORKSTATION_KEY)}(?==)")
+# La línea que identifica el nombre de estación dentro del .XRF (sección
+# [WORKSTATIONS]) se detecta por su VALOR de fábrica, NO por el nombre de
+# su clave -- esa clave ya cambió una vez entre versiones del instalador
+# de Shares (se había asumido "WORKSTATION_NAME", resultó ser "*WKSNAME"
+# en un archivo real), mientras que el valor "CHECKIN" se mantuvo igual
+# entre esas 2 versiones. Ver el punto (b) del paso 3 en el docstring del
+# módulo para el criterio completo.
+WORKSTATION_PLACEHOLDER_VALUE = "CHECKIN"
+_WORKSTATION_LINE_PATTERN = re.compile(
+    rf"(?m)^([^\r\n=]+)={re.escape(WORKSTATION_PLACEHOLDER_VALUE)}(?=\r?\n|$)"
+)
 
 
 class SharesConfigError(Exception):
@@ -178,7 +205,8 @@ def apply_shares_configuration(
         )
     if not hostname:
         raise SharesConfigError(
-            "El campo HOSTNAME está vacío — hace falta un valor para la línea WORKSTATION_NAME."
+            "El campo HOSTNAME está vacío — hace falta un valor para la línea "
+            f"'<clave>={WORKSTATION_PLACEHOLDER_VALUE}' del archivo."
         )
 
     base_dir = Path(base_dir)
@@ -209,9 +237,28 @@ def apply_shares_configuration(
 
     # (a) primero el reemplazo global del código detectado -> CIUDAD...
     text = text.replace(factory_code, ciudad)
-    # (b) ...y después la línea WORKSTATION_NAME=, para que un HOSTNAME que
-    # contenga ese código no se vea afectado por el reemplazo de arriba.
-    text = _WORKSTATION_PATTERN.sub(lambda _m: hostname, text)
+    # (b) ...y después la línea '<clave>=CHECKIN' (detectada por su VALOR,
+    # no por el nombre de su clave -- ver comentario de
+    # `WORKSTATION_PLACEHOLDER_VALUE` más arriba), para que un HOSTNAME
+    # que contenga el código de CIUDAD no se vea afectado por el
+    # reemplazo de (a).
+    workstation_matches = list(_WORKSTATION_LINE_PATTERN.finditer(text))
+    if not workstation_matches:
+        raise SharesConfigError(
+            f"No se encontró ninguna línea '<clave>={WORKSTATION_PLACEHOLDER_VALUE}' en "
+            f"'{new_file}' -- puede que una versión más nueva de Shares también haya "
+            "cambiado ese valor de fábrica (antes 'CHECKIN'), no solo el nombre de la clave."
+        )
+    if len(workstation_matches) > 1:
+        keys_found = ", ".join(m.group(1) for m in workstation_matches)
+        raise SharesConfigError(
+            f"Se encontraron {len(workstation_matches)} líneas terminadas en "
+            f"'={WORKSTATION_PLACEHOLDER_VALUE}' en '{new_file}' ({keys_found}) -- no se puede "
+            "saber cuál es el nombre de estación sin ambigüedad."
+        )
+    text = _WORKSTATION_LINE_PATTERN.sub(
+        lambda _m: f"{hostname}={WORKSTATION_PLACEHOLDER_VALUE}", text, count=1
+    )
 
     with new_file.open("w", encoding="utf-8", newline="") as f:
         f.write(text)

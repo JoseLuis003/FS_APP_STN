@@ -143,9 +143,13 @@ STN_SHORTCUTS_SUBDIR = "Shortcut"
 # directo en la raíz de C:.
 COPAAIR_DEST_DIR = Path(r"C:\copaair")
 
-# Accesos directos que se copian a Public Desktop, en el mismo orden que
-# el .bat original (algunos ".lnk", dos ".url" -- Excel y Word, que en
-# este equipo apuntan a atajos web en vez de a la app de escritorio).
+# Nombres que traía el .bat original (algunos ".lnk", dos ".url" -- Excel
+# y Word, que en este equipo apuntan a atajos web en vez de a la app de
+# escritorio). `copy_stn_assets_and_shortcuts()` YA NO filtra por esta
+# lista -- copia TODO archivo que encuentre suelto en `Shortcut\` (ver
+# `_copy_folder_and_shortcuts()`), para que agregar/quitar/renombrar un
+# acceso directo ahí no requiera tocar código. Esta constante queda solo
+# de referencia (y la usan los tests para armar los archivos de prueba).
 STN_SHORTCUT_FILES = [
     "WorldTracer.lnk",
     "AIMS.lnk",
@@ -165,17 +169,30 @@ def _copy_folder_and_shortcuts(
     source_dir_rel: str,
     copaair_subdir: str,
     shortcuts_subdir: str,
-    shortcut_files: list[str],
+    shortcut_files: list[str] | None,
     public_desktop: Path,
     copaair_dest_dir: Path,
 ) -> str:
     """Generaliza el patrón común a "Shortcuts" (`Scripts\\Shortcut STN.bat`)
     y "ShortCut-MTO" (`MTO\\ShortCut_MTO.bat`): copia una carpeta `Copaair`
-    (recursiva, con subcarpetas) a `copaair_dest_dir`, y después una lista
-    de accesos directos ya armados a `public_desktop`. `shortcuts_subdir`
+    (recursiva, con subcarpetas) a `copaair_dest_dir`, y después los
+    accesos directos ya armados a `public_desktop`. `shortcuts_subdir`
     puede ser `""` si los accesos directos viven sueltos directo en
     `source_dir_rel` (caso MTO) en vez de en una subcarpeta propia (caso
     STN, que los tiene en una subcarpeta "Shortcut").
+
+    `shortcut_files`: lista fija de nombres exactos a copiar (falla con
+    `ShortcutError` si falta alguno -- caso MTO, cuya carpeta de origen
+    comparte espacio con otros instaladores de esa misma columna, así que
+    no se puede copiar "todo lo que haya ahí" sin arrastrar también esos
+    instaladores). O `None` para copiar TODO archivo que haya suelto
+    DIRECTO dentro de `shortcuts_src` (sin bajar a subcarpetas),
+    cualquiera sea su nombre -- pensado para "Shortcuts" (STN), cuya
+    carpeta `Shortcut\\` es exclusiva de accesos directos y nada más, así
+    que agregar/quitar/renombrar uno ahí ya no requiere tocar el código
+    (antes, con una lista fija de 10 nombres, un archivo renombrado o
+    ausente -- visto en pruebas reales con `LOPA.lnk` -- hacía fallar
+    todo el paso).
 
     Siempre sobrescribe -- ninguno de los 2 `.bat` originales pasaba `/Y`
     en los `xcopy` de los accesos directos individuales (así que en teoría
@@ -184,8 +201,11 @@ def _copy_folder_and_shortcuts(
     interactiva disponible nunca llegaba a sobrescribir nada de todos
     modos.
 
-    Lanza `ShortcutError` si la carpeta `Copaair` o alguno de los accesos
-    directos no aparece donde se espera, o si alguna copia falla."""
+    Lanza `ShortcutError` si la carpeta `Copaair` o la de accesos
+    directos no aparece donde se espera, si la carpeta de accesos
+    directos existe pero está vacía (con `shortcut_files=None`), si falta
+    alguno de los nombres exactos esperados (con `shortcut_files` como
+    lista), o si alguna copia falla."""
     source_dir = Path(installers_base_path) / source_dir_rel
     copaair_src = source_dir / copaair_subdir
     shortcuts_src = source_dir / shortcuts_subdir if shortcuts_subdir else source_dir
@@ -203,8 +223,15 @@ def _copy_folder_and_shortcuts(
         raise ShortcutError(f"No se encontró la carpeta de accesos directos '{shortcuts_src}'.")
     public_desktop.mkdir(parents=True, exist_ok=True)
 
+    if shortcut_files is None:
+        names = sorted(entry.name for entry in shortcuts_src.iterdir() if entry.is_file())
+        if not names:
+            raise ShortcutError(f"No se encontró ningún acceso directo en '{shortcuts_src}'.")
+    else:
+        names = shortcut_files
+
     copied: list[str] = []
-    for name in shortcut_files:
+    for name in names:
         source_file = shortcuts_src / name
         if not source_file.exists():
             raise ShortcutError(f"No se encontró el acceso directo '{source_file}'.")
@@ -222,15 +249,18 @@ def copy_stn_assets_and_shortcuts(
     public_desktop: Path = PUBLIC_DESKTOP,
     copaair_dest_dir: Path = COPAAIR_DEST_DIR,
 ) -> str:
-    """Copia la carpeta `Copaair` (dentro de `Scripts\\`) y los 10 accesos
-    directos de `STN_SHORTCUT_FILES` (dentro de `Scripts\\Shortcut\\`).
-    Ver `_copy_folder_and_shortcuts()`."""
+    """Copia la carpeta `Copaair` (dentro de `Scripts\\`) y TODO archivo
+    que haya suelto directo en `Scripts\\Shortcut\\`, sin importar su
+    nombre -- antes se exigía que coincidieran exactamente los 10 nombres
+    de `STN_SHORTCUT_FILES` (esa constante queda solo de referencia /
+    para armar los datos de prueba, ya no filtra nada acá). Ver
+    `_copy_folder_and_shortcuts()`."""
     return _copy_folder_and_shortcuts(
         installers_base_path,
         STN_SOURCE_DIR_REL,
         STN_COPAAIR_SUBDIR,
         STN_SHORTCUTS_SUBDIR,
-        STN_SHORTCUT_FILES,
+        None,
         public_desktop,
         copaair_dest_dir,
     )

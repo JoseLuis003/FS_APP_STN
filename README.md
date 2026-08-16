@@ -916,6 +916,7 @@ FS_APP_STN/
 ├── requirements.txt
 ├── build.spec               # spec de PyInstaller (onefile, sin consola)
 ├── build.bat                 # script de compilación para Windows
+├── version_info.txt          # metadatos de versión de Windows del .exe (ver "Falsos positivos de antivirus")
 ├── app/
 │   ├── config.py             # carga/guarda apps.json, ltp_css_apps.json y settings.json
 │   ├── installer.py          # motor de instalación (subprocess + QThread)
@@ -1149,6 +1150,67 @@ descomprime en una carpeta temporal en cada ejecución, **para que los
 técnicos puedan editar `apps.json`/`settings.json` sin recompilar**, copia
 manualmente la carpeta `config` junto al `.exe` en `dist/` — la app la
 detecta automáticamente ahí (ver `app/config.py::get_app_root`).
+
+## Falsos positivos de antivirus
+
+Un `.exe` empaquetado con PyInstaller sin ningún ajuste adicional es un
+candidato típico a que algún antivirus (o Windows SmartScreen) lo marque
+como sospechoso o directamente lo bloquee — no porque tenga código
+malicioso, sino por varias señales que también usan los empaquetadores de
+malware para evadir firmas. `build.spec` ya tiene 2 ajustes para reducir
+esto:
+
+1. **`upx=False`** — UPX (el compresor que PyInstaller usa por defecto)
+   cambia la forma en que quedan los bytes del `.exe`, de una manera muy
+   parecida a como muchos malware empaquetan el suyo para evadir firmas
+   antivirus. Es de las causas más comunes de falso positivo en binarios
+   de PyInstaller/Python en general. Desactivarlo deja el `.exe` más
+   pesado, pero reduce bastante ese riesgo.
+2. **`version='version_info.txt'`** — agrega metadatos de versión de
+   Windows (CompanyName, FileDescription, ProductName, etc., visibles en
+   Propiedades → Detalles del `.exe` en el Explorador). Un `.exe` sin esta
+   información se ve "en blanco" (sin publisher, sin versión), otra señal
+   que revisan tanto antivirus como SmartScreen.
+
+Estos 2 cambios ayudan, pero **no reemplazan la firma digital
+(Authenticode)** — la señal más fuerte de todas, y la que de verdad resuelve
+el problema de raíz en vez de solo mitigarlo:
+
+- Si Copa tiene una CA interna (la mayoría de las empresas con Active
+  Directory la tienen) que ya está en la lista de confianza de los equipos
+  del dominio, pedirle a Seguridad/Infraestructura un certificado de firma
+  de código (*code signing*) de esa CA interna es lo más rápido — los
+  equipos ya confían en esa CA sin necesitar que Windows/el antivirus
+  "acumule reputación" del archivo con el tiempo. Firmar el `.exe` después
+  de compilarlo:
+  ```bat
+  signtool sign /a /fd sha256 /tr http://timestamp.digicert.com /td sha256 dist\FS_APP_STN.exe
+  ```
+  (`signtool` viene con el Windows SDK; el parámetro `/tr` agrega un
+  timestamp para que la firma siga siendo válida después de que venza el
+  certificado).
+- Si no hay CA interna disponible para esto, un certificado de firma de
+  código de una CA pública (DigiCert, Sectigo, etc.) también funciona,
+  aunque toma más tiempo/costo conseguirlo.
+- **Mientras tanto** (sin firma todavía), otras 2 vías rápidas y sin costo,
+  típicas para un despliegue interno como este:
+  - **Excepción/lista blanca por hash o ruta vía política del antivirus
+    empresarial** (Microsoft Defender ASR, o la consola del EDR/antivirus
+    que use Copa) — al ser un despliegue controlado a equipos del dominio,
+    esto suele ser más rápido que esperar que el antivirus "aprenda" que
+    el archivo es confiable por su cuenta.
+  - **Enviar el `.exe` a revisión de falso positivo**: a Microsoft
+    (https://www.microsoft.com/en-us/wdsi/filesubmission, si el antivirus
+    en cuestión es Defender) y/o subirlo a VirusTotal para ver qué
+    motores lo marcan — varios antivirus tienen su propio formulario de
+    "falso positivo" parecido al de Microsoft.
+
+Nota aparte: cada vez que se recompila el `.exe` (cada `pyinstaller
+build.spec` nuevo) el archivo resultante es un binario distinto con un hash
+distinto — cualquier reputación o excepción que se haya ganado/agregado
+para una versión anterior no se traslada automáticamente a la nueva, así
+que conviene planear firmar (o volver a pedir la excepción) como parte del
+proceso de cada release, no como un paso de una sola vez.
 
 ## Logs
 

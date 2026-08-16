@@ -1,0 +1,40 @@
+# UTF-8
+#
+# Recurso de versión de Windows para el .exe (PyInstaller lo empaqueta vía
+# `version='version_info.txt'` en build.spec) -- un .exe sin esta
+# información (CompanyName, FileDescription, ProductName, etc. en blanco)
+# es una de las señales que los antivirus/SmartScreen usan para tratarlo
+# como sospechoso, además de la falta de firma digital. Actualiza
+# `filevers`/`prodvers`/`FileVersion`/`ProductVersion` cuando corresponda
+# llevar un versionado real de la app.
+#
+# Para más detalles sobre el "fixed file info" (ffi), ver:
+# http://msdn.microsoft.com/en-us/library/ms646997.aspx
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+    ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'040904B0',
+        [StringStruct(u'CompanyName', u'Copa Airlines'),
+        StringStruct(u'FileDescription', u'FS_APP_STN - Instalador desatendido de estaciones'),
+        StringStruct(u'FileVersion', u'1.0.0.0'),
+        StringStruct(u'InternalName', u'FS_APP_STN'),
+        StringStruct(u'LegalCopyright', u'Copa Airlines'),
+        StringStruct(u'OriginalFilename', u'FS_APP_STN.exe'),
+        StringStruct(u'ProductName', u'FS_APP_STN'),
+        StringStruct(u'ProductVersion', u'1.0.0.0')])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)

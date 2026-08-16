@@ -35,10 +35,21 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # `upx=False`: UPX comprime/empaqueta el .exe -- lo que también hace
+    # que se parezca, a nivel de bytes, a como muchos malware empaquetan
+    # el suyo para evadir firmas. Es una de las causas más comunes de
+    # falso positivo en antivirus para binarios de PyInstaller; se
+    # desactiva a propósito, aunque el .exe quede más pesado.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,   # sin consola, como una app de escritorio normal
     icon=None,       # ej: 'assets/icon.ico'
     uac_admin=True,  # exige privilegios de administrador (UAC) al abrir el .exe
+    # Metadatos de versión de Windows (CompanyName, FileDescription,
+    # ProductName, etc. -- ver version_info.txt) para que el .exe se vea
+    # como software real y no una app "en blanco" sin publisher/versión,
+    # otra señal que revisan antivirus/SmartScreen. No reemplaza la firma
+    # digital (ver README, sección "Falsos positivos de antivirus").
+    version='version_info.txt',
 )

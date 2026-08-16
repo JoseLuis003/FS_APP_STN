@@ -12,9 +12,8 @@
             { "id": "epson_usb_driver",       "label": "EPSON USB DRIVER",     "installer": "LTP TRAVEL DOC\\TMUSB800d\\Setup.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "8.0.0.d" },
             { "id": "virtual_port",           "label": "VIRTUAL PORT",         "installer": "LTP TRAVEL DOC\\TMVirtualPortDriver870d\\TMVirtualPortDriver870d.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "8.7.0.d" },
             { "id": "bgr_ier",                "label": "BGR IER",              "installer": "LTP TRAVEL DOC\\BGR_IER\\IER_99179_Setup.exe", "silent_args": "",           "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "9.9.179" },
-            { "id": "custom",                 "label": "CUSTOM",               "installer": "LTP TRAVEL DOC\\CUSTOM\\MANUAL.pdf", "silent_args": "",           "installer_type": "open",   "default_checked": false, "enabled": true, "version": "N/D",
+            { "id": "custom",                 "label": "CUSTOM",               "installer": "LTP TRAVEL DOC\\CUSTOM\\PrinterSet_3.9.7.exe", "silent_args": "", "installer_type": "exe",   "default_checked": false, "enabled": true, "version": "3.9.7",
               "extra_steps": [
-                { "installer": "LTP TRAVEL DOC\\CUSTOM\\PrinterSet_3.9.7.exe", "silent_args": "", "installer_type": "exe", "version": "3.9.7" },
                 { "installer": "C:\\Program Files\\CUSTOM\\PrinterSet\\CePrinterSet.exe", "silent_args": "", "installer_type": "open" },
                 { "installer": "LTP TRAVEL DOC\\CUSTOM\\DIW_KPM180H_221.exe", "silent_args": "", "installer_type": "exe", "version": "2.21" }
               ] },

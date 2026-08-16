@@ -424,6 +424,19 @@ partes" a la pantalla LTP / CSS (la primera fue el grupo exclusivo
 GEMALTO/3M/DESKO, arriba); las siguientes se irán sumando según se vayan
 definiendo.
 
+**Orden con la cola normal:** "Shares Configuracion" edita archivos que
+deja el propio instalador de "Shares 5.0" (`C:\LTP\AppDatCM\...`, ver
+abajo) — si en la MISMA corrida se marcan las dos casillas juntas (para
+instalar Shares 5.0 desde cero y configurarlo de una), `_on_installar()`
+espera a que la cola normal (`InstallManager`) termine de instalar Shares
+5.0 antes de aplicar "Shares Configuracion" (ver `_on_queue_finished()` en
+`app/ui/ltp_css_window.py`) — antes de este ajuste, se aplicaba de
+inmediato, sin esperar, y por lo tanto siempre fallaba buscando una
+carpeta que el MSI todavía no había creado. Si Shares 5.0 ya estaba
+instalado de una corrida anterior (o no se marca en esta), no cambia
+nada: se aplica igual, sin cola de por medio que esperar. Mismo criterio
+para "AppShell Configuracion" y "AppShell 4.00.0030" más abajo.
+
 **Qué hace "Shares Configuracion" al presionar INSTALAR
 (`app/shares_config_apply.py`):** a diferencia del resto del catálogo, este
 ítem no ejecuta un instalador — edita directamente los archivos de Shares
@@ -922,21 +935,23 @@ Cada aplicación se define así:
   ítem con `extra_steps` cambia de instalador en un paso que no es el
   primero, por ahora hay que editar `apps.json` a mano para ese paso.
   Ejemplo con un paso `open` y una ruta absoluta (CUSTOM en
-  `ltp_css_apps.json` — abre un PDF, instala un `.exe`, abre un `.exe` ya
-  instalado en una ruta fija, e instala otro `.exe`):
+  `ltp_css_apps.json` — instala un `.exe`, abre otro `.exe` ya instalado
+  en una ruta fija por el paso anterior, e instala un tercer `.exe`):
   ```json
   {
     "id": "custom",
     "label": "CUSTOM",
-    "installer": "LTP TRAVEL DOC\\CUSTOM\\MANUAL.pdf",
-    "installer_type": "open",
+    "installer": "LTP TRAVEL DOC\\CUSTOM\\PrinterSet_3.9.7.exe",
+    "installer_type": "exe",
     "extra_steps": [
-      { "installer": "LTP TRAVEL DOC\\CUSTOM\\PrinterSet_3.9.7.exe", "silent_args": "", "installer_type": "exe" },
       { "installer": "C:\\Program Files\\CUSTOM\\PrinterSet\\CePrinterSet.exe", "silent_args": "", "installer_type": "open" },
       { "installer": "LTP TRAVEL DOC\\CUSTOM\\DIW_KPM180H_221.exe", "silent_args": "", "installer_type": "exe" }
     ]
   }
   ```
+  (Este ítem tenía antes un primer paso `open` que abría un
+  `MANUAL.pdf` — se quitó porque ya no hace falta; por eso el primer
+  paso ahora es directamente el `.exe` de PrinterSet.)
   Cada elemento de `extra_steps` también puede llevar una clave `version`
   puramente informativa (no la usa el motor de instalación) cuando ese
   paso instala un paquete con su propio número de versión distinto al del

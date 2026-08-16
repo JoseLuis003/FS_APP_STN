@@ -133,6 +133,14 @@ class LtpCssWindow(QMainWindow):
         self.checkboxes: dict[str, tuple[AppItem, QCheckBox]] = {}
         self.install_manager: InstallManager | None = None
 
+        # Shares/AppShell Configuracion pendientes de aplicar en
+        # `_on_queue_finished` -- ver el comentario en `_on_installar`.
+        # Inicializados acá (y no solo dentro de `_on_installar`) para que
+        # nunca falten aunque algo llame a `_on_queue_finished` antes de la
+        # primera corrida.
+        self._pending_shares_entry: tuple[AppItem, QCheckBox] | None = None
+        self._pending_appshell_entry: tuple[AppItem, QCheckBox] | None = None
+
         # "Shares Configuracion" y "AppShell Configuracion" no pasan por
         # `InstallManager`/`InstallWorker` (ver `_run_shares_configuration`
         # y `_run_appshell_configuration`), así que sin este logger propio
@@ -379,11 +387,19 @@ class LtpCssWindow(QMainWindow):
         self._results = {"ok": 0, "error": 0}
         self._install_records: list[tuple[str, str, datetime]] = []
 
-        if apply_shares:
-            self._run_shares_configuration(shares_entry)
-
-        if apply_appshell:
-            self._run_appshell_configuration(appshell_entry)
+        # Shares Configuracion / AppShell Configuracion se difieren a
+        # DESPUÉS de que termine la cola de instalación normal (ver
+        # `_on_queue_finished`), en vez de aplicarse ya mismo: si en esta
+        # misma corrida también se marcó instalar "Shares 5.0" o "AppShell
+        # 4.00.0030" (los ítems que crean `C:\LTP\AppDatCM` y
+        # `PrintAgent_COPA_PROD.ini` respectivamente), aplicar la
+        # Configuracion ANTES de que esos instaladores terminen siempre
+        # fallaba -- esos archivos/carpetas todavía no existían. Si
+        # Shares/AppShell 5.0 ya estaban instalados de una corrida
+        # anterior, aplicarlo después de una cola vacía o ya terminada no
+        # cambia nada (sigue encontrando los archivos donde siempre).
+        self._pending_shares_entry = shares_entry if apply_shares else None
+        self._pending_appshell_entry = appshell_entry if apply_appshell else None
 
         if selected:
             self.install_manager = InstallManager(self.settings.installers_base_path, self)
@@ -393,8 +409,9 @@ class LtpCssWindow(QMainWindow):
             self.install_manager.start(selected)
         else:
             # Solo se había marcado Shares Configuracion y/o AppShell
-            # Configuracion: no queda nada más que mandar al motor de
-            # instalación normal.
+            # Configuracion: no hay cola de instalación normal antes --
+            # `_on_queue_finished` las aplica y cierra la pantalla igual
+            # que si fuera cualquier otra corrida.
             self._on_queue_finished()
 
     def _run_shares_configuration(self, shares_entry: tuple[AppItem, QCheckBox]) -> None:
@@ -595,6 +612,16 @@ class LtpCssWindow(QMainWindow):
         checkbox.style().polish(checkbox)
 
     def _on_queue_finished(self) -> None:
+        # Recién ahora -- con la cola de instalación normal ya terminada
+        # (si es que había una) -- se aplican Shares/AppShell
+        # Configuracion (ver el comentario en `_on_installar`).
+        if self._pending_shares_entry is not None:
+            self._run_shares_configuration(self._pending_shares_entry)
+            self._pending_shares_entry = None
+        if self._pending_appshell_entry is not None:
+            self._run_appshell_configuration(self._pending_appshell_entry)
+            self._pending_appshell_entry = None
+
         self._set_controls_enabled(True)
         self.progress_bar.setVisible(False)
         self.progress_bar.setRange(0, 1)

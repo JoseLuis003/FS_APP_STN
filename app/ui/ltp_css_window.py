@@ -56,11 +56,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# Título base de la ventana; se le agrega el tamaño actual (ancho x alto en
-# píxeles) al final, visible en la barra de título del sistema operativo —
-# así el técnico puede ver de un vistazo si la ventana se está abriendo más
-# grande de lo esperado, sin tener que agregar un widget aparte (ver
-# `_update_title_with_size` / `resizeEvent`).
 _BASE_TITLE = "FS APP PORTABLE - LTP / CSS"
 
 # Tamaño de ventana por defecto al abrir (confirmado a mano por el
@@ -117,10 +112,7 @@ class LtpCssWindow(QMainWindow):
         # haciendo scroll, así que la ventana nunca se abre más alta que la
         # pantalla del técnico.
         self.resize(*_initial_window_size())
-        # El título (con el tamaño actual agregado) se fija después de
-        # `resize()` para reflejar el tamaño ya recortado desde el arranque,
-        # sin depender de que `resizeEvent` llegue a tiempo.
-        self._update_title_with_size()
+        self.setWindowTitle(_BASE_TITLE)
 
         # Si se abrió desde la portada, este callback regresa a esa
         # pantalla; si no se indica, ATRAS simplemente cierra esta ventana.
@@ -162,19 +154,6 @@ class LtpCssWindow(QMainWindow):
         self._path_check_timer = QTimer(self)
         self._path_check_timer.timeout.connect(self._update_active_path_label)
         self._path_check_timer.start(3000)
-
-    def _update_title_with_size(self) -> None:
-        """Agrega el tamaño actual de la ventana (ancho x alto en píxeles)
-        al final del título, visible en la barra de título del sistema.
-        Se llama al abrir la ventana y en cada `resizeEvent`, así el
-        técnico puede ver de un vistazo si la ventana se abrió (o quedó,
-        tras arrastrar el borde) más grande de lo esperado para su
-        pantalla."""
-        self.setWindowTitle(f"{_BASE_TITLE}  —  {self.width()} x {self.height()} px")
-
-    def resizeEvent(self, event) -> None:
-        self._update_title_with_size()
-        super().resizeEvent(event)
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:

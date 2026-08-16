@@ -380,13 +380,6 @@ funciones de `app/config.py` que escriben el catálogo (`add_app_item`,
 parámetro `apps_file` para esto — por defecto siguen apuntando a
 `APPS_FILE`, así que el comportamiento de APPS no cambió.
 
-**Tamaño de la ventana en la barra de título:** el título de esta ventana
-incluye el ancho x alto actual en píxeles (ej. "FS APP PORTABLE - LTP / CSS
-— 583 x 632 px"), actualizado en vivo en cada `resizeEvent` — así, si la
-ventana se abre más grande de lo esperado en el equipo de algún técnico, se
-puede ver el tamaño exacto con solo mirar la barra de título del sistema,
-sin herramientas adicionales.
-
 El catálogo y el panel de "Shares Configuracion" van dentro de un área con
 scroll: ATRAS e INSTALAR quedan siempre fijos y completos abajo, sin
 importar cuánto contenido haya arriba ni qué tan chica sea la pantalla del
@@ -408,6 +401,13 @@ queden inalcanzables detrás de la barra de tareas. Esto es solo el tamaño
 INICIAL — la ventana se puede seguir agrandando o achicando con normalidad
 arrastrando el borde, como cualquier ventana. El contenido que no quepa en
 esa altura se ve haciendo scroll (ver el punto anterior).
+
+APPS (`app/ui/main_window.py`, clase `MainWindow`) usa el mismo tamaño
+inicial (583 x 632, con su propia copia de `_initial_window_size()` y las
+mismas constantes -- cada módulo de ventana trae la suya, por el mismo
+precedente de helpers self-contained del proyecto). A diferencia de LTP /
+CSS, la ventana de APPS no agrega el tamaño actual al título de la barra
+del sistema.
 
 **Grupos exclusivos (selección única, tipo radio button):** algunos ítems
 del catálogo pueden marcarse como mutuamente excluyentes agregándoles el
@@ -809,6 +809,24 @@ reporte (número de serie y Asset Tag vía WMI/PowerShell — `Win32_BIOS` y
 `Win32_SystemEnclosure`; versión de Windows vía el registro). Si algo no se
 puede leer (por ejemplo, corriendo fuera de Windows), se muestra "No
 disponible" en vez de fallar.
+
+**Windows 11 mostrado como "Windows 10" (`_fix_windows_11_product_name`
+en `app/report.py`):** confirmado con una captura real de un reporte
+generado en una VM de prueba — la versión de Windows salía como "Windows
+10 Enterprise Evaluation (Build 22621.3880)", aunque el build 22621 es en
+realidad Windows 11 22H2. La causa es un bug conocido (y nunca corregido)
+de Windows: la clave de registro `ProductName`
+(`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`) sigue diciendo
+literalmente "Windows 10 ..." en equipos que corren Windows 11 — Windows
+10 y 11 comparten la misma rama de versión "10.0.xxxxx", así que
+Microsoft nunca actualizó esa clave al pasar de uno a otro. La única
+forma confiable de diferenciarlos es el número de build (Windows 11
+arranca en el build 22000), no el texto de `ProductName`. Por eso
+`get_windows_version()` ahora corrige el texto con
+`_fix_windows_11_product_name()`: si el build leído es 22000 o más y
+`ProductName` todavía dice "Windows 10", se reemplaza por "Windows 11"
+antes de armar el reporte — un verdadero Windows 10 (build menor a
+22000) no se toca.
 
 Debajo va la tabla con una fila por cada aplicación que se instaló
 correctamente: nombre, versión (tomada del campo `version` de

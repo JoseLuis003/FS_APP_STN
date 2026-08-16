@@ -48,6 +48,39 @@ def get_asset_tag() -> str:
     return value or "No disponible"
 
 
+# Build de Windows a partir del cual el sistema es Windows 11 (empezó en
+# el build 22000). Hace falta este número, y no la clave `ProductName` ni
+# la versión "10.0.xxxxx" del registro, para diferenciar Windows 10 de
+# 11 -- ver `_fix_windows_11_product_name`.
+_WINDOWS_11_MIN_BUILD = 22000
+
+
+def _fix_windows_11_product_name(product_name: str, build_number: object) -> str:
+    """Corrige un bug conocido (y nunca arreglado) de Windows: la clave de
+    registro `ProductName`
+    (`HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion`) sigue
+    diciendo literalmente "Windows 10 ..." en equipos que en realidad
+    corren Windows 11 -- confirmado en una VM de prueba real (reporte
+    generado mostrando "Windows 10 Enterprise Evaluation (Build
+    22621.3880)", cuando el build 22621 es en realidad Windows 11 22H2).
+    Windows 10 y 11 comparten la misma rama de versión "10.0.xxxxx", así
+    que Microsoft nunca actualizó `ProductName` al pasar de uno a otro; la
+    única forma confiable de diferenciarlos es el número de build (ver
+    `_WINDOWS_11_MIN_BUILD`), no el texto de esa clave.
+
+    Devuelve `product_name` tal cual si no pudo interpretar
+    `build_number`, o si `product_name` no contiene "Windows 10" (para no
+    tocar nada en casos ya correctos, o en ediciones/idiomas con un texto
+    distinto que no se pueda adivinar con un simple reemplazo)."""
+    try:
+        build_int = int(str(build_number).split(".")[0])
+    except (TypeError, ValueError):
+        return product_name
+    if build_int >= _WINDOWS_11_MIN_BUILD and "Windows 10" in product_name:
+        return product_name.replace("Windows 10", "Windows 11", 1)
+    return product_name
+
+
 def get_windows_version() -> str:
     if sys.platform == "win32":
         try:
@@ -56,13 +89,15 @@ def get_windows_version() -> str:
             key_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
                 product_name = winreg.QueryValueEx(key, "ProductName")[0]
-                build = winreg.QueryValueEx(key, "CurrentBuildNumber")[0]
+                build_number = winreg.QueryValueEx(key, "CurrentBuildNumber")[0]
+                build_display = build_number
                 try:
                     ubr = winreg.QueryValueEx(key, "UBR")[0]
-                    build = f"{build}.{ubr}"
+                    build_display = f"{build_number}.{ubr}"
                 except FileNotFoundError:
                     pass
-            return f"{product_name} (Build {build})"
+            product_name = _fix_windows_11_product_name(product_name, build_number)
+            return f"{product_name} (Build {build_display})"
         except Exception:
             pass
     return platform.platform() or "No disponible"

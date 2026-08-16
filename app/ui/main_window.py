@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -609,6 +610,28 @@ class SettingsDialog(QDialog):
         return self.settings
 
 
+# Tamaño de ventana por defecto al abrir (pedido explícito: igual que
+# LTP / CSS, ver `app/ui/ltp_css_window.py`). La ventana sigue siendo
+# redimensionable con normalidad -- esto es solo el tamaño INICIAL, no un
+# límite; ver `_initial_window_size`, que además lo recorta si la
+# pantalla del técnico es más chica que eso (por ejemplo un laptop con
+# poca resolución o con la barra de tareas ocupando espacio), para que la
+# ventana siempre entre completa.
+_DEFAULT_WIDTH = 583
+_DEFAULT_HEIGHT = 632
+_SCREEN_MARGIN = 40
+
+
+def _initial_window_size() -> tuple[int, int]:
+    width, height = _DEFAULT_WIDTH, _DEFAULT_HEIGHT
+    screen = QGuiApplication.primaryScreen()
+    if screen is not None:
+        available = screen.availableGeometry()
+        width = min(width, max(available.width() - _SCREEN_MARGIN, 300))
+        height = min(height, max(available.height() - _SCREEN_MARGIN, 300))
+    return width, height
+
+
 class MainWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
@@ -618,7 +641,7 @@ class MainWindow(QMainWindow):
         # heredan los QMessageBox de esta ventana, que son diálogos de
         # nivel superior aparte y no heredan un `.setStyleSheet()` puesto
         # solo acá (ver comentario en `main.py`).
-        self.resize(900, 650)
+        self.resize(*_initial_window_size())
 
         # Si se abrió desde la portada (FS APP PORTABLE -> APPS), este
         # callback regresa a esa pantalla; si no se indica, ATRAS simplemente

@@ -30,6 +30,23 @@ DOMINIO").
   nunca se estire a ocupar toda la pantalla, sin importar la resolución del
   equipo. Para cambiarlo, edita `FIXED_WIDTH`/`FIXED_HEIGHT` en
   `app/ui/home_window.py`.
+- **Imagen de fondo nítida en pantallas de alta densidad
+  (`_compute_background_geometry` en `app/ui/home_window.py`):** bug
+  reportado por un técnico ("la imagen de la portada se ve pixelada") en
+  un equipo con escala de Windows mayor a 100% (125% / 150% / 200%, muy
+  común en laptops corporativos). La causa: `_BackgroundWidget` le pedía
+  a `QPixmap.scaled()` el tamaño LÓGICO de la ventana (ej. 515×580) tal
+  cual, sin multiplicarlo por `devicePixelRatioF()` (la relación entre
+  píxeles físicos y lógicos de la pantalla) — en una pantalla escalada,
+  eso deja un resultado con menos píxeles reales de los que la pantalla
+  puede mostrar, y Qt lo estira para llenar el espacio, dando el efecto
+  pixelado/borroso sin importar qué tan nítida sea la imagen original.
+  Ahora se escala a `tamaño_lógico × devicePixelRatioF()` (píxeles
+  físicos reales) y se marca el resultado con
+  `QPixmap.setDevicePixelRatio()` para que Qt lo dibuje a su tamaño
+  lógico correcto, sin volver a estirarlo. En una pantalla normal (100%
+  de escala, `devicePixelRatioF() == 1.0`) el comportamiento es
+  idéntico a antes.
 
 ## Catálogo de instalación (botón APPS)
 

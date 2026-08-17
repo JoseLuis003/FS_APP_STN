@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -73,6 +73,42 @@ QLabel#sizeDebugLabel {{
 """
 
 
+def _compute_background_geometry(
+    widget_width: int, widget_height: int, dpr: float, pixmap_width: int, pixmap_height: int
+) -> tuple[int, int, float, float]:
+    """Calcula a qué tamaño (en píxeles FÍSICOS, no lógicos) hay que
+    escalar la imagen de fondo para que se vea nítida en pantallas de alta
+    densidad (125% / 150% / 200% de escala en Windows -- muy común en
+    laptops corporativos), y la posición LÓGICA (x, y) donde dibujarla
+    centrada dentro del widget.
+
+    Bug que esto corrige: `QWidget.size()` devuelve el tamaño LÓGICO de la
+    ventana (ej. 515x580), no el tamaño físico real de la pantalla. Si se
+    le pide a `QPixmap.scaled()` ese tamaño lógico tal cual (como hacía
+    antes este widget) en una pantalla con escala > 100%, el resultado
+    queda con menos píxeles reales de los que la pantalla puede mostrar, y
+    Qt lo estira para llenar el espacio -- ahí aparece el efecto
+    "pixelado"/borroso que se reportó, sin importar qué tan nítida sea la
+    imagen original. La corrección: multiplicar por `devicePixelRatioF()`
+    (la relación entre píxeles físicos y lógicos de la pantalla actual)
+    antes de escalar, y llamar a `QPixmap.setDevicePixelRatio()` en el
+    resultado para que Qt lo dibuje a su tamaño lógico correcto sin
+    volver a estirarlo.
+
+    Devuelve `(0, 0, 0.0, 0.0)` si la imagen no tiene tamaño válido (para
+    que quien llame pueda saltarse el dibujo sin dividir por cero)."""
+    if pixmap_width <= 0 or pixmap_height <= 0 or dpr <= 0:
+        return 0, 0, 0.0, 0.0
+    physical_widget_width = widget_width * dpr
+    physical_widget_height = widget_height * dpr
+    scale = min(physical_widget_width / pixmap_width, physical_widget_height / pixmap_height)
+    target_width_px = round(pixmap_width * scale)
+    target_height_px = round(pixmap_height * scale)
+    x = (widget_width - target_width_px / dpr) / 2
+    y = (widget_height - target_height_px / dpr) / 2
+    return target_width_px, target_height_px, x, y
+
+
 class _BackgroundWidget(QWidget):
     """Widget que dibuja una imagen completa, sin recortarla (letterbox con
     un color sólido a los lados si la proporción de la ventana no coincide
@@ -86,10 +122,14 @@ class _BackgroundWidget(QWidget):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(_BAR_COLOR))
         if not self._pixmap.isNull():
-            scaled = self._pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            x = (self.width() - scaled.width()) // 2
-            y = (self.height() - scaled.height()) // 2
-            painter.drawPixmap(x, y, scaled)
+            dpr = self.devicePixelRatioF() or 1.0
+            target_w, target_h, x, y = _compute_background_geometry(
+                self.width(), self.height(), dpr, self._pixmap.width(), self._pixmap.height()
+            )
+            if target_w > 0 and target_h > 0:
+                scaled = self._pixmap.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled.setDevicePixelRatio(dpr)
+                painter.drawPixmap(QPointF(x, y), scaled)
         super().paintEvent(event)
 
 

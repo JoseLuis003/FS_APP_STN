@@ -58,6 +58,13 @@ OU_OPTIONS: list[tuple[str, str]] = [
     ("MTO", "OU=ESTACIONES MTO,OU=Workstations_Estaciones,OU=Workstations_Copa,DC=copaair,DC=com"),
 ]
 
+# Rama del árbol de AD bajo la que se buscan las OUs cuando el técnico
+# presiona "Cargar OUs desde AD" (ver `fetch_ou_list_from_ad` /
+# `scripts/list_ous.ps1`) -- la misma rama común a las 5 opciones fijas de
+# arriba, no todo el dominio (que traería OUs de usuarios, servidores,
+# etc. sin relación con estaciones).
+OU_SEARCH_BASE_DN = "OU=Workstations_Copa,DC=copaair,DC=com"
+
 # Grupos que se agregan al grupo local Administrators una vez unido al
 # dominio -- cada elemento se pasa como UN SOLO argumento (ver
 # `apply_post_join_setup`), a diferencia del script original que los pasaba
@@ -161,6 +168,69 @@ def join_domain(current_name: str, new_name: str, ou_dn: str, username: str, pas
 
     result = _run_powershell_script("join_domain.ps1", args, stdin_text=(password or "") + "\n")
     _interpret_result(result, "No se pudo unir el equipo al dominio")
+
+
+def _interpret_ou_list_result(result: subprocess.CompletedProcess) -> list[tuple[str, str]]:
+    """Interpreta la salida de `list_ous.ps1`: junta las líneas
+    `OU|<nombre>|<DN>` en la lista de resultado, y busca la misma línea
+    RESULT_* que usa `join_domain.ps1` (ver `_interpret_result`) para
+    reaccionar igual ante credenciales inválidas o cualquier otro error.
+
+    Si `RESULT_OK` llega sin haber juntado ninguna línea `OU|...|...`,
+    se trata como error igual -- lo más probable es que `OU_SEARCH_BASE_DN`
+    ya no sea correcto (o el técnico no tenga permiso de lectura ahí), y
+    dejar el combo vacío sería peor que avisarle."""
+    stdout = result.stdout or ""
+    ou_options: list[tuple[str, str]] = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if line == "RESULT_OK":
+            if not ou_options:
+                raise DomainJoinError(
+                    f"No se encontró ninguna OU bajo '{OU_SEARCH_BASE_DN}' -- revisa la "
+                    "conexión al dominio, o si esa ruta del árbol de AD sigue siendo correcta."
+                )
+            return ou_options
+        if line == "RESULT_BAD_CREDENTIALS":
+            raise BadCredentialsError("El usuario o la contraseña no son correctos.")
+        if line.startswith("RESULT_ERROR:"):
+            detail = line[len("RESULT_ERROR:"):].strip()
+            raise DomainJoinError(detail or "No se pudo leer la lista de OUs desde Active Directory.")
+        if line.startswith("OU|"):
+            parts = line.split("|", 2)
+            if len(parts) == 3:
+                _, name, dn = parts
+                ou_options.append((name, dn))
+
+    detail = (result.stderr or stdout or "").strip()
+    suffix = f": {detail}" if detail else ""
+    raise DomainJoinError(
+        f"No se pudo leer la lista de OUs desde Active Directory{suffix} "
+        f"(código de salida {result.returncode})."
+    )
+
+
+def fetch_ou_list_from_ad(username: str, password: str) -> list[tuple[str, str]]:
+    """Consulta Active Directory en vivo (vía LDAP, con las mismas
+    credenciales que el técnico ya escribió para unirse al dominio) y
+    devuelve todas las OUs encontradas bajo `OU_SEARCH_BASE_DN`, como
+    (nombre, DN completo) -- el mismo formato que `OU_OPTIONS`, para poder
+    reemplazar el combo de la UI con esto en vez de la lista fija de 5.
+
+    No requiere el módulo RSAT de Active Directory (normalmente ausente en
+    un equipo recién provisionado): usa directamente las clases .NET
+    `System.DirectoryServices` desde PowerShell (ver `scripts/list_ous.ps1`).
+
+    Lanza `BadCredentialsError` si el usuario/contraseña son incorrectos, o
+    `DomainJoinError` para cualquier otro problema (sin red, DN base
+    incorrecto/inexistente, cero OUs encontradas, etc.)."""
+    args = [
+        "-DomainName", DOMAIN_NAME,
+        "-BaseDN", OU_SEARCH_BASE_DN,
+        "-Username", full_username(username),
+    ]
+    result = _run_powershell_script("list_ous.ps1", args, stdin_text=(password or "") + "\n")
+    return _interpret_ou_list_result(result)
 
 
 def apply_post_join_setup() -> None:

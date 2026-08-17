@@ -848,9 +848,10 @@ locales, autologon, reinicio) como si nada.
 1. El técnico completa: nombre del equipo (viene prellenado con el nombre
    actual — si lo cambia, el equipo se renombra en el mismo paso que se une
    al dominio), la Unidad Organizativa (mismas 5 opciones del script
-   original: ATO-BCK, ATO-COU-GTE, CGO, CTO, MTO), su usuario (solo el
-   usuario, sin dominio — el prefijo `copaair\` se muestra fijo en la UI y
-   Python lo antepone) y su contraseña.
+   original: ATO-BCK, ATO-COU-GTE, CGO, CTO, MTO — ver más abajo cómo
+   ampliar esta lista consultando el AD real), su usuario (solo el usuario,
+   sin dominio — el prefijo `copaair\` se muestra fijo en la UI y Python lo
+   antepone) y su contraseña.
 2. Al presionar "UNIR AL DOMINIO", un `DomainJoinWorker` (QThread) corre en
    segundo plano para no congelar la ventana:
    - **Usuario o contraseña incorrectos**: se le avisa al técnico con un
@@ -868,6 +869,43 @@ locales, autologon, reinicio) como si nada.
 3. **Reinicio**: a diferencia del script original (que reiniciaba sin
    preguntar), acá siempre se le pregunta al técnico antes de reiniciar. Si
    confirma, se ejecuta `shutdown /r /t 10` (10 segundos de margen).
+
+**Botón "Cargar OUs desde AD" (`fetch_ou_list_from_ad`, `scripts/list_ous.ps1`):**
+las 5 OUs de `OU_OPTIONS` son una lista fija, portada tal cual del script
+original — si el AD de Copa agrega, renombra o reorganiza OUs bajo
+`Workstations_Copa`, esta pantalla no se entera sola. El botón junto al
+combo consulta Active Directory EN VIVO (por LDAP, con el mismo
+usuario/contraseña que el técnico ya escribió para la unión al dominio) y
+reemplaza el combo con las OUs reales que encuentre, en vez de la lista
+fija:
+
+- Busca únicamente bajo `OU_SEARCH_BASE_DN` ("OU=Workstations_Copa,
+  DC=copaair,DC=com" — la misma rama común a las 5 opciones de arriba), no
+  en todo el dominio, para no traer OUs de usuarios/servidores/otras áreas
+  que no tienen nada que ver con estaciones.
+- No requiere el módulo RSAT de Active Directory (`Get-ADOrganizationalUnit`
+  no está disponible si ese módulo no está instalado, y normalmente NO lo
+  está en un equipo recién provisionado — justo el escenario de esta app):
+  usa directamente las clases `System.DirectoryServices` de .NET
+  (`DirectoryEntry` + `DirectorySearcher`), disponibles en cualquier
+  Windows sin instalar nada adicional.
+- Corre en un `FetchOuListWorker` (QThread) para no congelar la ventana,
+  con el mismo manejo de resultado que `DomainJoinWorker`: credenciales
+  incorrectas limpian solo la contraseña (igual que al fallar "UNIR AL
+  DOMINIO"), y cualquier otro error (sin red, `OU_SEARCH_BASE_DN` ya no
+  existe, cero OUs encontradas, etc.) deja el combo TAL COMO ESTABA —
+  nunca lo vacía ni lo rompe, así que si la consulta falla el técnico
+  puede seguir usando la lista fija de siempre sin perder nada.
+- Si la OU que estaba seleccionada antes de recargar sigue apareciendo en
+  la lista nueva (mismo DN), se mantiene seleccionada después de
+  recargar.
+- Igual que `join_domain.ps1`, la contraseña nunca se pasa como argumento
+  de línea de comandos — se lee por stdin. Única diferencia: acá se pasa
+  como texto plano al constructor de `DirectoryEntry` en vez de armar un
+  `PSCredential`/`SecureString` como hace `Add-Computer` — esa clase de
+  .NET no tiene un overload que acepte `SecureString`, así que no hay
+  forma de evitarlo en este caso puntual (sigue sin pasarse nunca por
+  argumento ni quedar en disco).
 
 **Cómo se distingue "credenciales incorrectas" de otros errores:** el
 script `scripts/join_domain.ps1` revisa el código de error nativo de Win32
@@ -901,6 +939,9 @@ extraen a una carpeta temporal en tiempo de ejecución, igual que `assets/`.
   tenía un bug acá: `COPAAIR\GRP-Soporte Copa Panama` sin comillas se
   interpreta como varios argumentos sueltos y falla al invocarse) y limpia
   el autologon local.
+- `list_ous.ps1`: consulta Active Directory por LDAP (sin RSAT) y devuelve
+  todas las OUs bajo `OU_SEARCH_BASE_DN` para el botón "Cargar OUs desde
+  AD" (ver más arriba).
 
 **Importante:** este entorno de desarrollo no tiene Windows/PowerShell
 disponible, así que la lógica de orquestación en Python está probada con
@@ -942,7 +983,8 @@ FS_APP_STN/
 │       └── styles.py         # hoja de estilos (QSS)
 ├── scripts/
 │   ├── join_domain.ps1        # Add-Computer + detección de credenciales inválidas (cod. 1326)
-│   └── post_join_setup.ps1    # grupos locales de Administrators + limpieza de autologon
+│   ├── post_join_setup.ps1    # grupos locales de Administrators + limpieza de autologon
+│   └── list_ous.ps1           # consulta OUs de AD por LDAP (botón "Cargar OUs desde AD")
 ├── assets/
 │   ├── check.png              # ícono del checkmark de los checkboxes
 │   └── home_background.png    # imagen de campaña de la portada

@@ -50,6 +50,7 @@ from app.domain_join import (
     BadCredentialsError,
     DomainJoinError,
     apply_post_join_setup,
+    fetch_ou_list_from_ad,
     join_domain,
 )
 
@@ -118,6 +119,36 @@ class DomainJoinWorker(QThread):
         self.succeeded.emit()
 
 
+class FetchOuListWorker(QThread):
+    """Corre `fetch_ou_list_from_ad()` en un hilo aparte (una consulta LDAP
+    puede tardar unos segundos) para no congelar la interfaz -- mismo
+    patrón de señales que `DomainJoinWorker`, para reutilizar el mismo
+    manejo de "credenciales incorrectas" vs. "cualquier otro error"."""
+
+    credentials_rejected = Signal(str)
+    failed = Signal(str)
+    succeeded = Signal(list)
+
+    def __init__(self, username: str, password: str, parent=None):
+        super().__init__(parent)
+        self.username = username
+        self.password = password
+
+    def run(self) -> None:
+        try:
+            ou_options = fetch_ou_list_from_ad(self.username, self.password)
+        except BadCredentialsError as exc:
+            self.credentials_rejected.emit(str(exc))
+            return
+        except DomainJoinError as exc:
+            self.failed.emit(str(exc))
+            return
+        finally:
+            self.password = ""
+
+        self.succeeded.emit(ou_options)
+
+
 class DominioWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
@@ -134,6 +165,7 @@ class DominioWindow(QMainWindow):
 
         self._current_name = socket.gethostname()
         self._worker: DomainJoinWorker | None = None
+        self._ou_worker: FetchOuListWorker | None = None
 
         self._build_ui()
 
@@ -163,7 +195,18 @@ class DominioWindow(QMainWindow):
         self.ou_combo = QComboBox()
         for label, dn in OU_OPTIONS:
             self.ou_combo.addItem(label, dn)
-        form.addRow("Unidad organizativa (OU):", self.ou_combo)
+
+        ou_row = QHBoxLayout()
+        ou_row.addWidget(self.ou_combo, 1)
+        self.cargar_ous_btn = QPushButton("Cargar OUs desde AD")
+        self.cargar_ous_btn.setToolTip(
+            "Consulta Active Directory en vivo (con el usuario y contraseña\n"
+            "de abajo) y reemplaza esta lista fija de 5 por las OUs reales\n"
+            "encontradas bajo Workstations_Copa."
+        )
+        self.cargar_ous_btn.clicked.connect(self._on_cargar_ous)
+        ou_row.addWidget(self.cargar_ous_btn)
+        form.addRow("Unidad organizativa (OU):", ou_row)
 
         username_row = QHBoxLayout()
         prefix_label = QLabel(USERNAME_DOMAIN_PREFIX)
@@ -253,7 +296,64 @@ class DominioWindow(QMainWindow):
         self._worker.succeeded.connect(self._on_succeeded)
         self._worker.start()
 
+    def _on_cargar_ous(self) -> None:
+        """Consulta Active Directory en vivo (con el usuario/contraseña ya
+        escritos) y reemplaza `self.ou_combo` con las OUs reales
+        encontradas -- ver `fetch_ou_list_from_ad` en `app/domain_join.py`."""
+        username = self.username_edit.text().strip()
+        password = self.password_edit.text()
+
+        if not username:
+            QMessageBox.warning(self, "Cargar OUs desde AD", "Ingresa tu usuario de dominio primero.")
+            self.username_edit.setFocus()
+            return
+        if not password:
+            QMessageBox.warning(self, "Cargar OUs desde AD", "Ingresa tu contraseña de dominio primero.")
+            self.password_edit.setFocus()
+            return
+
+        self._set_controls_enabled(False)
+        self.status_label.setText("Consultando Active Directory...")
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
+
+        self._ou_worker = FetchOuListWorker(username, password, self)
+        self._ou_worker.credentials_rejected.connect(self._on_ou_credentials_rejected)
+        self._ou_worker.failed.connect(self._on_ou_failed)
+        self._ou_worker.succeeded.connect(self._on_ou_succeeded)
+        self._ou_worker.start()
+
     # --------------------------------------------------------- señales hilo
+    def _on_ou_credentials_rejected(self, message: str) -> None:
+        self._finish_attempt()
+        self.status_label.setText("Usuario o contraseña incorrectos.")
+        QMessageBox.warning(
+            self,
+            "Credenciales incorrectas",
+            f"{message}\n\nPor favor vuelve a ingresar tu usuario y contraseña.",
+        )
+        self.password_edit.clear()
+        self.password_edit.setFocus()
+
+    def _on_ou_failed(self, message: str) -> None:
+        self._finish_attempt()
+        self.status_label.setText(f"No se pudo cargar la lista de OUs: {message}")
+        QMessageBox.critical(self, "No se pudo cargar la lista de OUs", message)
+
+    def _on_ou_succeeded(self, ou_options: list) -> None:
+        self._finish_attempt()
+        # Si la OU seleccionada antes de recargar sigue estando en la lista
+        # nueva, se mantiene marcada -- si no, queda la primera de la lista
+        # nueva (comportamiento normal de QComboBox al hacer `clear()`).
+        previous_dn = self.ou_combo.currentData()
+        self.ou_combo.clear()
+        for label, dn in ou_options:
+            self.ou_combo.addItem(label, dn)
+        restored_index = self.ou_combo.findData(previous_dn)
+        if restored_index >= 0:
+            self.ou_combo.setCurrentIndex(restored_index)
+        self.status_label.setText(f"Se cargaron {len(ou_options)} OU(s) desde Active Directory.")
+
     def _on_credentials_rejected(self, message: str) -> None:
         self._finish_attempt()
         self.status_label.setText("Usuario o contraseña incorrectos.")
@@ -319,6 +419,7 @@ class DominioWindow(QMainWindow):
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         self.unir_btn.setEnabled(enabled)
+        self.cargar_ous_btn.setEnabled(enabled)
         self.computer_name_edit.setEnabled(enabled)
         self.ou_combo.setEnabled(enabled)
         self.username_edit.setEnabled(enabled)

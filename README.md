@@ -268,6 +268,49 @@ El ítem `bfirst` (2da columna) tiene 3 pasos, en este orden:
    `C:\Copaair` si no existía) y `/Y` (sobrescribir sin preguntar), que
    es justamente lo que hace este paso.
 
+### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
+
+El ítem `dell_command` tiene 2 pasos, en este orden:
+
+1. **`dotnet_desktop_runtime_setup`** (`installer_type: "python"`,
+   instalador PRINCIPAL del ítem — ver
+   `app/dotnet_desktop_runtime_setup.py`,
+   `ensure_dotnet_desktop_runtime_installed`). Confirmado en una prueba
+   real de campo, en un Dell Latitude 5280 genuino (no una VM): el EXE
+   de Dell Command Update 5.7.1 (`installer_type: "exe"`, silencioso
+   con `/s`) terminaba con **código de salida 4**, que en el esquema
+   estándar de Dell Update Package (DUP) significa "hard dependency
+   error" — un prerequisito obligatorio no cumplido, que no se puede
+   forzar con `/f`. Se descartó hardware no soportado (era un Dell
+   genuino) y sistema operativo no soportado; la causa real, confirmada
+   con reportes de la propia comunidad de Dell sobre esta misma serie
+   5.x, es que el instalador de Dell Command Update exige tener ya
+   instalado el **Microsoft .NET Desktop Runtime** (el ".NET" moderno —
+   NO ".NET Framework 3.5", que es el prerequisito de BFirst, ver
+   arriba) dentro de un rango de versión específico: entre 8.0.8 y
+   8.0.17 (x64). Ni la ausencia total del runtime ni una versión más
+   nueva (ej. la 8.0.18, que Microsoft ya liberó y excede el máximo que
+   revisa el instalador de DCU) sirven — en ambos casos, DCU aborta
+   igual con el código 4.
+
+   `ensure_dotnet_desktop_runtime_installed()` primero revisa si ya hay
+   una versión compatible instalada (mirando las subcarpetas de
+   `C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\`, sin
+   necesitar `dotnet.exe` en el PATH) — si la hay, no hace nada más
+   (idempotente). Si no, instala desde un instalador offline local en
+   `<installers_base_path>\DotNetDesktopRuntime\windowsdesktop-runtime-
+   8.0.17-win-x64.exe` (mismo criterio que NetFX35: nunca se descarga
+   nada de internet, porque muchas estaciones de Copa no tienen salida
+   — hay que colocar ese `.exe` junto a los demás instaladores, dentro
+   de una carpeta `DotNetDesktopRuntime`). Se eligió a propósito
+   instalar la versión 8.0.17 (el tope superior que acepta DCU 5.x):
+   como los runtimes de .NET conviven instalados en paralelo
+   (side-by-side), agregar esta versión no reemplaza ni afecta ninguna
+   otra que ya esté — sirve tanto si no había NINGÚN runtime instalado
+   como si ya había uno más nuevo e incompatible.
+2. El EXE real de Dell Command Update 5.7.1 (`extra_step`, sin cambios
+   — sigue siendo `installer_type: "exe"` con `/s`).
+
 ### SAP GUI 7.8 (`app/sap_gui_setup.py`)
 
 Paso extra (`installer_type: "python"`, `sap_gui_setup`), el ÚLTIMO de

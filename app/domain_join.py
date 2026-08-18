@@ -90,6 +90,18 @@ class BadCredentialsError(DomainJoinError):
     error genérico y darse por vencida."""
 
 
+class ComputerNameExistsError(DomainJoinError):
+    """Ya existe en Active Directory un objeto de equipo con el nombre
+    elegido -- ver `check_computer_name_available()`. Se distingue del
+    resto de errores porque la UI debe mostrar la explicación completa
+    (causa real + las 3 opciones del técnico) en vez de un mensaje
+    genérico, y porque este error se detecta ANTES de intentar
+    `Add-Computer` -- el equipo nunca llega a unirse al dominio con el
+    nombre genérico de Windows cuando pasa esto (a diferencia del bug
+    real que motivó este chequeo, ver el docstring de
+    `check_computer_name_available`)."""
+
+
 def full_username(username: str) -> str:
     """Antepone "copaair\\" al usuario que escribe el técnico. Si el
     técnico ya escribió el dominio de alguna forma (`copaair\\usuario` o
@@ -148,21 +160,120 @@ def _interpret_result(result: subprocess.CompletedProcess, generic_error_prefix:
     raise DomainJoinError(f"{generic_error_prefix}{suffix} (código de salida {result.returncode}).")
 
 
+def _interpret_name_check_result(result: subprocess.CompletedProcess, computer_name: str) -> None:
+    """Interpreta la salida de `check_computer_name.ps1`: junta las líneas
+    `NAME_EXISTS|<DN>` (normalmente a lo sumo una, el nombre es único en
+    el dominio, pero se juntan todas por si acaso) y, al llegar a
+    `RESULT_OK`, lanza `ComputerNameExistsError` si se encontró alguna --
+    con el DN encontrado y la explicación completa de la causa real (ver
+    `check_computer_name_available`). Si no se encontró ninguna, no hace
+    nada (el nombre está libre para usarse)."""
+    stdout = result.stdout or ""
+    found_dns: list[str] = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if line == "RESULT_OK":
+            if not found_dns:
+                return
+            dn_list = "\n".join(f"  - {dn}" for dn in found_dns)
+            raise ComputerNameExistsError(
+                f"El nombre '{computer_name}' ya existe en Active Directory:\n{dn_list}\n\n"
+                "Esto NO es un problema de este equipo ni de esta app: desde octubre de 2022, "
+                "Windows bloquea por seguridad la reutilización de una cuenta de equipo ya "
+                "existente (KB5020276, \"Netjoin: Domain join hardening changes\"), a menos que "
+                "quien haga la unión sea quien creó esa cuenta originalmente, sea Domain/Enterprise "
+                "Admin, o el dueño de esa cuenta tenga permitida la reutilización vía la directiva "
+                "\"Domain controller: Allow computer account reuse during domain join\".\n\n"
+                "Opciones:\n"
+                "  1. Pide al equipo de Active Directory que elimine ese objeto (si es de un equipo "
+                "anterior que ya no existe).\n"
+                "  2. Vuelve a intentar con las credenciales de quien creó esa cuenta originalmente.\n"
+                "  3. Usa un nombre distinto para este equipo."
+            )
+        if line == "RESULT_BAD_CREDENTIALS":
+            raise BadCredentialsError("El usuario o la contraseña no son correctos.")
+        if line.startswith("RESULT_ERROR:"):
+            detail = line[len("RESULT_ERROR:"):].strip()
+            raise DomainJoinError(detail or f"No se pudo validar si el nombre '{computer_name}' ya existe en AD.")
+        if line.startswith("NAME_EXISTS|"):
+            _, _, dn = line.partition("|")
+            if dn:
+                found_dns.append(dn)
+
+    detail = (result.stderr or stdout or "").strip()
+    suffix = f": {detail}" if detail else ""
+    raise DomainJoinError(
+        f"No se pudo validar si el nombre '{computer_name}' ya existe en Active Directory{suffix} "
+        f"(código de salida {result.returncode})."
+    )
+
+
+def check_computer_name_available(computer_name: str, username: str, password: str) -> None:
+    """Confirma que NO exista ya en Active Directory un objeto de equipo
+    con `computer_name` -- se corre ANTES de `join_domain()` para evitar
+    un bug real reportado en campo: unir el equipo con `Add-Computer
+    -NewName` cuando el nombre deseado YA existía en AD terminaba
+    "funcionando a medias" -- el equipo SÍ quedaba unido al dominio, pero
+    con el nombre genérico de Windows (ej. "DESKTOP-XXXXX"), porque el
+    renombrado (parte del mismo comando) fallaba con "The account
+    already exists" -- y encima se le mostraba al técnico como un fallo
+    total, sin avisarle que el equipo ya había quedado unido (con el
+    nombre incorrecto).
+
+    Importante: renombrar el equipo LOCALMENTE antes de unirlo (en vez de
+    dejar que `Add-Computer -NewName` lo haga en el mismo paso) NO
+    evita este bloqueo -- la causa real no es el orden de las
+    operaciones. Desde octubre de 2022, Windows bloquea por seguridad
+    reutilizar una cuenta de equipo ya existente en AD (KB5020276,
+    "Netjoin: Domain join hardening changes"), sin importar si el intento
+    de unión llega con el nombre ya puesto localmente o lo cambia en el
+    mismo paso -- en ambos casos, el Controlador de Dominio rechaza la
+    reutilización igual si quien se está uniendo no es el creador
+    original de esa cuenta (o Domain/Enterprise Admin, o tiene la
+    directiva de grupo correspondiente). Por eso este chequeo no intenta
+    "arreglar" nada por su cuenta (no borra ni resetea el objeto
+    encontrado -- sería una operación destructiva sobre AD sin
+    intervención humana) -- solo detecta el conflicto ANTES de intentar
+    `Add-Computer`, para que el equipo nunca llegue a unirse con el
+    nombre genérico, y le explica al técnico la causa real y sus 3
+    opciones (ver `_interpret_name_check_result`).
+
+    Lanza `ComputerNameExistsError` si el nombre ya existe,
+    `BadCredentialsError` si el usuario/contraseña son incorrectos, o
+    `DomainJoinError` para cualquier otro problema (sin red, etc.). No
+    devuelve nada si el nombre está libre."""
+    args = [
+        "-DomainName", DOMAIN_NAME,
+        "-ComputerName", computer_name,
+        "-Username", full_username(username),
+    ]
+    result = _run_powershell_script("check_computer_name.ps1", args, stdin_text=(password or "") + "\n")
+    _interpret_name_check_result(result, computer_name)
+
+
 def join_domain(current_name: str, new_name: str, ou_dn: str, username: str, password: str) -> None:
     """Une el equipo al dominio `copaair.com`, en la OU indicada
     (`ou_dn`, uno de los valores de `OU_OPTIONS`), renombrándolo en el mismo
     paso si `new_name` es distinto de `current_name`.
 
-    Lanza `BadCredentialsError` si el usuario/contraseña son incorrectos
-    (la UI debe pedir que se vuelvan a ingresar), o `DomainJoinError` para
-    cualquier otro problema (OU inválida, sin conexión al dominio, nombre
-    de equipo duplicado, etc.)."""
+    Antes de intentar `Add-Computer`, valida con
+    `check_computer_name_available()` que el nombre final (el nuevo si se
+    va a renombrar, o el actual si no) no exista ya en Active Directory --
+    ver el docstring de esa función para el bug real que esto evita.
+
+    Lanza `ComputerNameExistsError` si ese nombre ya existe en AD,
+    `BadCredentialsError` si el usuario/contraseña son incorrectos (la UI
+    debe pedir que se vuelvan a ingresar), o `DomainJoinError` para
+    cualquier otro problema (OU inválida, sin conexión al dominio, etc.)."""
+    target_name = (new_name or "").strip() or (current_name or "").strip()
+
+    check_computer_name_available(target_name, username, password)
+
     args = [
         "-DomainName", DOMAIN_NAME,
         "-OUPath", ou_dn,
         "-Username", full_username(username),
     ]
-    target_name = (new_name or "").strip()
     if target_name and target_name.upper() != (current_name or "").strip().upper():
         args += ["-NewName", target_name]
 

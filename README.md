@@ -958,6 +958,47 @@ locales, autologon, reinicio) como si nada.
    preguntar), acá siempre se le pregunta al técnico antes de reiniciar. Si
    confirma, se ejecuta `shutdown /r /t 10` (10 segundos de margen).
 
+**Validación previa del nombre del equipo (`check_computer_name_available`,
+`scripts/check_computer_name.ps1`):** agregada tras un bug real reportado
+en una prueba de campo. Al renombrar el equipo (ej. de `DESKTOP-E2RRTIT` a
+`HDQITSTN02`) en el mismo paso que se unía al dominio, si `HDQITSTN02` YA
+existía como objeto de equipo en Active Directory, `Add-Computer` unía el
+equipo al dominio con éxito (bajo el nombre genérico de Windows,
+`DESKTOP-E2RRTIT`) pero el renombrado fallaba después con "The account
+already exists" — y ese resultado se le mostraba al técnico como un fallo
+TOTAL, sin avisarle que el equipo en realidad ya había quedado unido (mal
+nombrado).
+
+La causa real no es el orden en que se hacen el join y el renombrado —
+renombrar el equipo localmente antes de unirlo (en vez de dejar que
+`Add-Computer -NewName` lo haga en el mismo paso) NO evita este bloqueo.
+Desde octubre de 2022, Windows bloquea por seguridad la reutilización de
+una cuenta de equipo ya existente en AD (KB5020276, "Netjoin: Domain join
+hardening changes"), a menos que quien hace la unión sea quien creó esa
+cuenta originalmente, sea Domain/Enterprise Admin, o el dueño de esa cuenta
+tenga permitida la reutilización vía la directiva de grupo "Domain
+controller: Allow computer account reuse during domain join" — sin
+importar si el nombre ya estaba puesto localmente o se cambia en el mismo
+paso del join.
+
+Por eso el fix es **validar el nombre ANTES de intentar `Add-Computer`**,
+no reordenar rename/join: `join_domain()` primero llama a
+`check_computer_name_available()`, que consulta por LDAP (desde la raíz
+del dominio, no solo bajo `Workstations_Copa` — el nombre debe ser único
+en TODO el dominio) si ya existe un objeto `computer` con ese nombre. Si
+existe, se lanza `ComputerNameExistsError` — con el DN completo del objeto
+encontrado y las 3 opciones del técnico (pedir a AD que elimine ese objeto,
+reintentar con las credenciales del creador original, o usar un nombre
+distinto) — y el equipo **nunca llega a intentar unirse** con `Add-Computer`
+(a diferencia del bug real, acá no queda unido con el nombre genérico bajo
+ningún escenario). La UI muestra esto en un diálogo específico
+("Nombre de equipo ya existe en Active Directory", ver `_on_name_conflict`
+en `app/ui/dominio_window.py`), distinto del genérico "No se pudo unir al
+dominio" de cualquier otro error. Deliberadamente esta validación NO borra
+ni resetea el objeto encontrado por su cuenta — sería una operación
+destructiva sobre AD sin intervención humana, así que se deja en manos del
+técnico/equipo de AD decidir qué hacer.
+
 **Botón "Cargar OUs desde AD" (`fetch_ou_list_from_ad`, `scripts/list_ous.ps1`):**
 las 5 OUs de `OU_OPTIONS` son una lista fija, portada tal cual del script
 original — si el AD de Copa agrega, renombra o reorganiza OUs bajo
@@ -1020,6 +1061,9 @@ scripts solo ejecutan la operación de Windows y reportan el resultado.
 Se empaquetan dentro del `.exe` (ver `build.spec`, carpeta `scripts/`) y se
 extraen a una carpeta temporal en tiempo de ejecución, igual que `assets/`.
 
+- `check_computer_name.ps1`: consulta por LDAP si ya existe un objeto
+  `computer` con el nombre elegido, ANTES de intentar el join (ver más
+  arriba) — para el bug real de "the account already exists".
 - `join_domain.ps1`: hace el `Add-Computer` (con `-NewName` si corresponde,
   para renombrar en el mismo paso).
 - `post_join_setup.ps1`: agrega los grupos de soporte a Administrators
@@ -1070,6 +1114,7 @@ FS_APP_STN/
 │       ├── dominio_window.py # pantalla de unión al dominio (botón DOMINIO)
 │       └── styles.py         # hoja de estilos (QSS)
 ├── scripts/
+│   ├── check_computer_name.ps1 # valida por LDAP si el nombre ya existe en AD (ANTES de unir)
 │   ├── join_domain.ps1        # Add-Computer + detección de credenciales inválidas (cod. 1326)
 │   ├── post_join_setup.ps1    # grupos locales de Administrators + limpieza de autologon
 │   └── list_ous.ps1           # consulta OUs de AD por LDAP (botón "Cargar OUs desde AD")

@@ -48,6 +48,7 @@ from app.domain_join import (
     OU_OPTIONS,
     USERNAME_DOMAIN_PREFIX,
     BadCredentialsError,
+    ComputerNameExistsError,
     DomainJoinError,
     apply_post_join_setup,
     fetch_ou_list_from_ad,
@@ -76,6 +77,7 @@ class DomainJoinWorker(QThread):
     `DominioWindow`)."""
 
     credentials_rejected = Signal(str)
+    name_conflict = Signal(str)
     failed = Signal(str)
     post_setup_warning = Signal(str)
     succeeded = Signal()
@@ -101,6 +103,16 @@ class DomainJoinWorker(QThread):
             join_domain(self.current_name, self.new_name, self.ou_dn, self.username, self.password)
         except BadCredentialsError as exc:
             self.credentials_rejected.emit(str(exc))
+            return
+        except ComputerNameExistsError as exc:
+            # Se distingue de un DomainJoinError genérico (ver
+            # `_on_name_conflict`): acá el equipo NUNCA llegó a intentar
+            # Add-Computer (el nombre se valida ANTES, ver
+            # `check_computer_name_available` en app/domain_join.py), así
+            # que el técnico necesita un mensaje distinto -- no es "algo
+            # falló al unirse", es "ese nombre ya existe en AD, decide qué
+            # hacer antes de reintentar".
+            self.name_conflict.emit(str(exc))
             return
         except DomainJoinError as exc:
             self.failed.emit(str(exc))
@@ -291,6 +303,7 @@ class DominioWindow(QMainWindow):
 
         self._worker = DomainJoinWorker(self._current_name, computer_name, ou_dn, username, password, self)
         self._worker.credentials_rejected.connect(self._on_credentials_rejected)
+        self._worker.name_conflict.connect(self._on_name_conflict)
         self._worker.failed.connect(self._on_failed)
         self._worker.post_setup_warning.connect(self._on_post_setup_warning)
         self._worker.succeeded.connect(self._on_succeeded)
@@ -366,6 +379,20 @@ class DominioWindow(QMainWindow):
         # así el técnico no tiene que volver a escribirlos.
         self.password_edit.clear()
         self.password_edit.setFocus()
+
+    def _on_name_conflict(self, message: str) -> None:
+        """El nombre elegido ya existe en Active Directory -- ver
+        `ComputerNameExistsError`. A diferencia de `_on_failed`, acá el
+        equipo NUNCA llegó a intentar unirse al dominio (la validación
+        ocurre ANTES de `Add-Computer`), así que no hace falta ofrecer
+        reiniciar ni nada por el estilo -- el técnico solo necesita
+        decidir qué hacer con el nombre (ver las 3 opciones en el
+        mensaje) y volver a intentarlo."""
+        self._finish_attempt()
+        self.status_label.setText("Ese nombre de equipo ya existe en Active Directory.")
+        QMessageBox.critical(self, "Nombre de equipo ya existe en Active Directory", message)
+        self.computer_name_edit.setFocus()
+        self.computer_name_edit.selectAll()
 
     def _on_failed(self, message: str) -> None:
         self._finish_attempt()

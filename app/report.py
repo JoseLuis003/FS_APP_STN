@@ -103,13 +103,26 @@ def get_windows_version() -> str:
     return platform.platform() or "No disponible"
 
 
+FAILED_VERSION_LABEL = "FALLO"
+
+
 def generate_report(
-    records: list[tuple[str, str, datetime.datetime]], section_label: str = ""
+    records: list[tuple[str, str, datetime.datetime, bool]], section_label: str = ""
 ) -> tuple[Path, Path]:
-    """Genera el reporte de instalación. `records` es la lista de apps que
-    se instalaron correctamente: (nombre_a_mostrar, version_a_mostrar, hora
-    en que terminó). El nombre/versión ya vienen resueltos (detectados del
-    propio instalador cuando fue posible, o del catálogo si no).
+    """Genera el reporte de instalación. `records` es la lista de TODAS las
+    apps que se intentaron instalar, correctas o no:
+    (nombre_a_mostrar, version_a_mostrar, hora en que terminó, si tuvo
+    éxito). El nombre/versión ya vienen resueltos (detectados del propio
+    instalador cuando fue posible, o del catálogo si no).
+
+    Las que fallaron (`success=False`) SÍ aparecen en el reporte -- a
+    diferencia de antes, que solo listaba las correctas -- pero con
+    `FAILED_VERSION_LABEL` ("FALLO") en la columna de versión en vez de la
+    versión real (que nunca llegó a instalarse), y resaltadas en rojo y
+    negrita en el HTML (ver `_write_html`) para que se distingan de un
+    vistazo. El detalle del error en sí sigue viviendo solo en `logs/` (el
+    reporte no tiene espacio para mensajes largos de error).
+
     `section_label` (opcional, ej. "LTP_CSS") identifica de qué pantalla
     viene el reporte cuando hay más de un catálogo en la app; se agrega al
     nombre del archivo y al título para no mezclarlos con los de APPS.
@@ -128,12 +141,25 @@ def generate_report(
     html_path = REPORTS_DIR / f"{base_name}.html"
     csv_path = REPORTS_DIR / f"{base_name}.csv"
 
-    rows = [(name, version, ts.strftime("%Y-%m-%d %H:%M:%S")) for name, version, ts in records]
+    rows = [
+        (name, version if success else FAILED_VERSION_LABEL, ts.strftime("%Y-%m-%d %H:%M:%S"), success)
+        for name, version, ts, success in records
+    ]
 
     _write_html(html_path, computer_name, serial, asset_tag, windows_version, rows, timestamp, section_label)
     _write_csv(csv_path, computer_name, serial, asset_tag, windows_version, rows)
 
     return html_path, csv_path
+
+
+def _app_row_html(name: str, version: str, fecha: str, success: bool) -> str:
+    """UNA fila de la tabla de aplicaciones. Si `success` es False, se
+    envuelve en la clase CSS `row-failed` (texto en rojo y negrita, ver la
+    hoja de estilos embebida en `_write_html`) -- `version` ya viene como
+    `FAILED_VERSION_LABEL` ("FALLO") para estas filas, resuelto en
+    `generate_report`, no acá."""
+    tr_open = "<tr>" if success else '<tr class="row-failed">'
+    return f"{tr_open}<td>{html.escape(name)}</td><td>{html.escape(version)}</td><td>{html.escape(fecha)}</td></tr>"
 
 
 def _write_html(
@@ -142,16 +168,13 @@ def _write_html(
     serial: str,
     asset_tag: str,
     windows_version: str,
-    rows: list[tuple[str, str, str]],
+    rows: list[tuple[str, str, str, bool]],
     timestamp: datetime.datetime,
     section_label: str = "",
 ) -> None:
     title_suffix = f" — {html.escape(section_label)}" if section_label else ""
     if rows:
-        rows_html = "\n".join(
-            f"<tr><td>{html.escape(name)}</td><td>{html.escape(version)}</td><td>{html.escape(fecha)}</td></tr>"
-            for name, version, fecha in rows
-        )
+        rows_html = "\n".join(_app_row_html(name, version, fecha, success) for name, version, fecha, success in rows)
     else:
         rows_html = (
             '<tr><td colspan="3" style="text-align:center;color:#888;">'
@@ -174,6 +197,7 @@ def _write_html(
   table.apps th {{ background: #16267a; color: white; text-align: left; padding: 8px 12px; }}
   table.apps td {{ padding: 8px 12px; border-bottom: 1px solid #ddd; }}
   table.apps tr:nth-child(even) {{ background: #f8f8f7; }}
+  table.apps tr.row-failed td {{ color: #c0392b; font-weight: 700; }}
 </style>
 </head>
 <body>
@@ -207,8 +231,14 @@ def _write_csv(
     serial: str,
     asset_tag: str,
     windows_version: str,
-    rows: list[tuple[str, str, str]],
+    rows: list[tuple[str, str, str, bool]],
 ) -> None:
+    # El CSV no tiene forma de mostrar color/negrita (es texto plano) --
+    # las filas que fallaron se distinguen igual que en el HTML por el
+    # valor "FALLO" en la columna de versión (ya resuelto en
+    # `generate_report`), simplemente sin remarcarlas visualmente. Por eso
+    # se descarta acá el 4to elemento (`success`) de cada fila: el CSV
+    # solo tiene 3 columnas.
     with path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(["Nombre del equipo", computer_name])
@@ -217,4 +247,4 @@ def _write_csv(
         writer.writerow(["Version de Windows", windows_version])
         writer.writerow([])
         writer.writerow(["Nombre de la aplicacion", "Version de la aplicacion", "Fecha de instalacion"])
-        writer.writerows(rows)
+        writer.writerows((name, version, fecha) for name, version, fecha, _success in rows)

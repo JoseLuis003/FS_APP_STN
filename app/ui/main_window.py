@@ -842,7 +842,7 @@ class MainWindow(QMainWindow):
 
         self._set_controls_enabled(False)
         self._results = {"ok": 0, "error": 0}
-        self._install_records: list[tuple[str, str, datetime]] = []
+        self._install_records: list[tuple[str, str, datetime, bool]] = []
 
         self.install_manager = InstallManager(self.settings.installers_base_path, self)
         self.install_manager.item_started.connect(self._on_item_started)
@@ -865,9 +865,13 @@ class MainWindow(QMainWindow):
     def _on_item_finished(self, item_id: str, success: bool, message: str) -> None:
         item, checkbox = self.checkboxes[item_id]
         checkbox.setProperty("installing", "false")
+        # Se registra en `_install_records` tanto si tuvo éxito como si
+        # falló -- las que fallan aparecen igual en el reporte final (ver
+        # `app/report.py`), con "FALLO" en la columna de versión en vez de
+        # la versión real, resaltadas en rojo y negrita.
+        self._install_records.append((item.label, item.version, datetime.now(), success))
         if success:
             self._results["ok"] += 1
-            self._install_records.append((item.label, item.version, datetime.now()))
             # Al llegar al 100%, el ítem desaparece de la lista (igual que la app original).
             checkbox.setVisible(False)
         else:

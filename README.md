@@ -845,11 +845,24 @@ arranca en el build 22000), no el texto de `ProductName`. Por eso
 antes de armar el reporte — un verdadero Windows 10 (build menor a
 22000) no se toca.
 
-Debajo va la tabla con una fila por cada aplicación que se instaló
-correctamente: nombre, versión (tomada del campo `version` de
-`config/apps.json` — actualízalo con la versión real de cada paquete) y
-fecha/hora de instalación. Las aplicaciones que fallaron no aparecen en el
-reporte (quedan marcadas en rojo en la pantalla y registradas en `logs/`).
+Debajo va la tabla con una fila por cada aplicación que se INTENTÓ
+instalar, haya tenido éxito o no: nombre, versión y fecha/hora en que
+terminó (correcta o con error). Las que tuvieron éxito muestran la
+versión real (tomada del campo `version` de `config/apps.json` —
+actualízalo con la versión real de cada paquete). Las que fallaron
+(`FAILED_VERSION_LABEL`, `app/report.py`) se distinguen de un vistazo:
+
+- En la columna de versión se muestra literalmente **"FALLO"** en vez de
+  la versión real (que nunca llegó a instalarse).
+- En el HTML, toda la fila se resalta en **rojo y negrita**
+  (`_app_row_html` / clase CSS `row-failed`) — en el CSV (texto plano,
+  sin color/negrita posible) se distinguen solo por el "FALLO" en la
+  columna de versión.
+
+El detalle del error en sí (mensaje completo, código de salida, etc.) NO
+va en el reporte — sigue viviendo únicamente en `logs/`, donde ya queda
+registrado igual que antes; el reporte solo avisa QUÉ falló, no POR QUÉ
+(para eso está `logs/install_<fecha>.log`).
 
 ## Pantalla DOMINIO (`app/ui/dominio_window.py`, `app/domain_join.py`)
 

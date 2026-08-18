@@ -466,6 +466,10 @@ class LtpCssWindow(QMainWindow):
         self._results["ok"] += 1
         self._install_records.append((item.label, item.version, datetime.now()))
         checkbox.setProperty("installing", "false")
+        # Desmarcar además de ocultar -- mismo motivo que en
+        # `_on_item_finished`: si no, "Shares Configuracion" queda marcada
+        # por debajo y una corrida posterior la vuelve a aplicar sola.
+        checkbox.setChecked(False)
         checkbox.setVisible(False)
         checkbox.style().unpolish(checkbox)
         checkbox.style().polish(checkbox)
@@ -554,6 +558,10 @@ class LtpCssWindow(QMainWindow):
         self._results["ok"] += 1
         self._install_records.append((item.label, item.version, datetime.now()))
         checkbox.setProperty("installing", "false")
+        # Desmarcar además de ocultar -- mismo motivo que en
+        # `_on_item_finished`: si no, "AppShell Configuracion" queda
+        # marcada por debajo y una corrida posterior la vuelve a aplicar sola.
+        checkbox.setChecked(False)
         checkbox.setVisible(False)
         checkbox.style().unpolish(checkbox)
         checkbox.style().polish(checkbox)
@@ -581,6 +589,12 @@ class LtpCssWindow(QMainWindow):
         if success:
             self._results["ok"] += 1
             self._install_records.append((item.label, item.version, datetime.now()))
+            # Desmarcar además de ocultar (ver el mismo comentario en
+            # `MainWindow._on_item_finished`): sin esto, la casilla queda
+            # marcada por debajo aunque invisible, y una corrida posterior
+            # (para instalar otras apps nuevas) la vuelve a incluir en
+            # `selected` y la reinstala sola, antes que las nuevas.
+            checkbox.setChecked(False)
             checkbox.setVisible(False)
         else:
             self._results["error"] += 1

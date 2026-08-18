@@ -78,6 +78,21 @@ DOMINIO").
   (ver sección abajo) y se abre en el navegador.
 - El nombre y la versión que se ven en cada checkbox y en el reporte salen
   del campo `label`/`version` de `config/apps.json`.
+- Una app instalada con éxito desaparece de la lista (`checkbox.setVisible
+  (False)`) y además queda DESMARCADA (`checkbox.setChecked(False)`) --
+  fix de un bug real reportado en pruebas de campo: antes solo se ocultaba
+  sin desmarcarse, así que quedaba marcada "por debajo", invisible; si
+  después se presionaba INSTALAR de nuevo para instalar otras apps nuevas
+  (de otra columna, por ejemplo), esa casilla ya instalada se colaba otra
+  vez en la cola -- y como conserva su posición original en el catálogo,
+  se reinstalaba PRIMERO, antes que las apps nuevas seleccionadas. Mismo
+  fix aplicado en LTP / CSS (`_on_item_finished`,
+  `_run_shares_configuration` y `_run_appshell_configuration` en
+  `app/ui/ltp_css_window.py`) — ahí además corrige un efecto secundario
+  del mismo bug en los grupos exclusivos (GEMALTO/3M/DESKO): antes, una
+  vez instalado uno de ellos, los otros dos quedaban bloqueados para
+  siempre (el checkbox marcado nunca llegaba a "desmarcarse" para
+  liberarlos); ahora sí se rehabilitan correctamente.
 
 ### Activar Windows (`app/windows_activation.py`)
 

@@ -873,6 +873,16 @@ class MainWindow(QMainWindow):
         if success:
             self._results["ok"] += 1
             # Al llegar al 100%, el ítem desaparece de la lista (igual que la app original).
+            # Además de ocultarla hay que DESMARCARLA (`setChecked(False)`):
+            # ocultar una casilla no la desmarca sola, así que si se queda
+            # marcada por debajo -- aunque invisible -- la próxima vez que
+            # se presione INSTALAR (para instalar otras apps nuevas) esta
+            # sigue contando como "seleccionada" en `_on_installar` y se
+            # vuelve a instalar de nuevo, encima ANTES que las apps nuevas
+            # (por el orden del catálogo). Bug real reportado en pruebas de
+            # campo: las apps ya instaladas se reinstalaban solas al
+            # instalar otras de una columna distinta.
+            checkbox.setChecked(False)
             checkbox.setVisible(False)
         else:
             self._results["error"] += 1

@@ -146,12 +146,22 @@ def build_command(item: AppItem, installer_path: Path) -> list[str]:
 
 
 def _iter_steps(item: AppItem):
-    """Genera (installer_relativo, silent_args, installer_type) para el
-    paso principal de `item` y luego cada uno de `item.extra_steps`, en el
-    mismo orden en que deben ejecutarse."""
-    yield item.installer, item.silent_args, item.installer_type
+    """Genera (installer_relativo, silent_args, installer_type,
+    exit_code_messages) para el paso principal de `item` y luego cada uno
+    de `item.extra_steps`, en el mismo orden en que deben ejecutarse.
+    `exit_code_messages` (ver `AppItem` en app/config.py) es un dict
+    {código_de_salida_como_string: mensaje} con mensajes a mostrar en vez
+    del genérico "código de salida N" cuando ESE paso falla con un código
+    puntual conocido (ej. SAP GUI 7.8, códigos 144/145 -- ver
+    `InstallWorker.run`)."""
+    yield item.installer, item.silent_args, item.installer_type, item.exit_code_messages
     for step in item.extra_steps:
-        yield step.get("installer", ""), step.get("silent_args", ""), step.get("installer_type", "exe")
+        yield (
+            step.get("installer", ""),
+            step.get("silent_args", ""),
+            step.get("installer_type", "exe"),
+            step.get("exit_code_messages", {}),
+        )
 
 
 class InstallLogger:
@@ -189,7 +199,7 @@ class InstallWorker(QThread):
         total_steps = len(steps)
         last_detail = ""
 
-        for index, (installer_rel, silent_args, installer_type) in enumerate(steps, start=1):
+        for index, (installer_rel, silent_args, installer_type, exit_code_messages) in enumerate(steps, start=1):
             step_tag = f" (paso {index}/{total_steps})" if total_steps > 1 else ""
 
             if installer_type == "python":
@@ -295,7 +305,19 @@ class InstallWorker(QThread):
                         f"{item.label}: el instalador no escribió nada en stdout/stderr -- "
                         f"el único detalle disponible es el código de salida {result.returncode}."
                     )
-                self.finished_item.emit(item.id, False, f"{detail}{step_tag}")
+                # Si ESTE paso tiene un mensaje configurado para ESTE código
+                # de salida puntual (ver `exit_code_messages` en `AppItem`,
+                # app/config.py), se usa ese en vez del genérico "código de
+                # salida N" -- pensado para códigos "conocidos" que no son
+                # un error real sino algo que el técnico puede resolver él
+                # mismo (ej. SAP GUI 7.8, 144/145: pendiente reinicio). La
+                # casilla igual queda en rojo/sin marcar como cualquier
+                # fallo -- el código real de todos modos ya quedó en el log
+                # de arriba, esto solo cambia lo que ve el técnico en el
+                # tooltip.
+                custom_message = exit_code_messages.get(str(result.returncode))
+                message = custom_message if custom_message else f"{detail}{step_tag}"
+                self.finished_item.emit(item.id, False, message)
                 return
             last_detail = detail
 

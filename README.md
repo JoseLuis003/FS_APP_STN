@@ -328,6 +328,51 @@ El ítem `dell_command` tiene 2 pasos, en este orden:
 
 ### SAP GUI 7.8 (`app/sap_gui_setup.py`)
 
+El ítem `sap_gui` tiene 5 pasos: `vstor_redist.exe` (principal),
+`NwSapSetup.exe`, el parche `GUI800_4-80006341.EXE`, `SAPSetupSLC.exe`, y
+por último `sap_gui_setup` (`installer_type: "python"`, ver más abajo).
+
+**Problema conocido: código de salida 144/145 en el paso 2
+(`NwSapSetup.exe`)** — reportado en una prueba real de campo:
+`vstor_redist.exe` (paso 1) termina OK (código 0), pero `NwSapSetup.exe`
+(paso 2) falla enseguida después con el código 145, sin ningún detalle en
+stdout/stderr. Confirmado contra la documentación oficial de SAP (KB
+3275253, "Component VC15RT64 is in error" — termina con "RC-145: Error
+report has been created and reboot is recommended" — y KB 3117684, sobre
+el código 144: "COM server out of process self registration failed!
+Reboot required"): estos códigos significan que el componente VC++ que
+`vstor_redist.exe` acaba de instalar necesita que **Windows reinicie**
+para terminar de registrar sus componentes COM antes de que
+`NwSapSetup.exe` pueda continuar — instalar los dos, uno detrás del otro,
+en la misma sesión, sin reiniciar en el medio, produce este fallo. Esto
+solo pasa la PRIMERA vez que se instala ese componente VC++ en un equipo
+(si ya estaba instalado de antes, `vstor_redist.exe` devuelve 1638 en vez
+de 0, y no hace falta reiniciar).
+
+**Solución manual** (se decidió no automatizar esto con un paso de
+prerequisito tipo NetFX35/.NET Desktop Runtime — instalar todo el ítem
+de una sola pasada no permite reiniciar a la mitad sin rediseñar el
+motor de instalación): si "SAP GUI 7.8" falla en el paso 2, **reinicia
+el equipo y vuelve a marcar la casilla "SAP GUI 7.8"** (quedó
+desmarcada automáticamente al fallar, ver "Catálogo de instalación") —
+la segunda vez, `vstor_redist.exe` detecta que el componente ya está
+instalado (código 1638) y sigue derecho con los 4 pasos restantes sin
+volver a fallar. Para que esto sea claro sin tener que buscar el código
+en este README, ese paso tiene configurado un `exit_code_messages` (ver
+`AppItem` en `app/config.py` y `InstallWorker.run()` en
+`app/installer.py`): si falla justo con el código 144 o 145, la casilla
+queda en rojo/sin marcar como cualquier fallo (sigue contando como
+error en `_results` y en el reporte), pero el tooltip muestra
+**"Pendiente reinicio: el componente VC++ que se acaba de instalar
+necesita que reinicies el equipo antes de continuar. Reinicia y vuelve
+a marcar esta casilla."** en vez del genérico "código de salida 145" —
+el código real de todos modos queda igual en `logs/`. `exit_code_messages`
+es un mecanismo genérico (no específico de SAP GUI): cualquier paso de
+cualquier ítem, en `config/apps.json` o `config/ltp_css_apps.json`,
+puede definir su propio `"exit_code_messages": {"<código>": "<mensaje>"}`
+para reemplazar el mensaje genérico en códigos de salida "conocidos"
+puntuales.
+
 Paso extra (`installer_type: "python"`, `sap_gui_setup`), el ÚLTIMO de
 los 4 pasos extra del ítem `sap_gui` (después de `NwSapSetup.exe`, el
 parche `GUI800_4-80006341.EXE` y `SAPSetupSLC.exe`), portado de

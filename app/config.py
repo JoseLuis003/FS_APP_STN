@@ -109,6 +109,22 @@ class AppItem:
     # suelto en la carpeta de instaladores (ej. `shares_5_0`, ver
     # `app/shares_setup.py`).
     extra_steps: list[dict] = field(default_factory=list)
+    # Mensaje a mostrar en vez del genérico "código de salida N" cuando el
+    # PRIMER paso (arriba) falla con ese código puntual -- las claves son
+    # el código de salida como STRING (las claves de un objeto JSON
+    # siempre son texto), el valor es el mensaje ya listo para mostrarle
+    # al técnico en el tooltip de la casilla. Pensado para códigos de
+    # salida "conocidos" que no son un error real sino una condición
+    # puntual que el técnico puede resolver él mismo (ej. SAP GUI 7.8,
+    # códigos 144/145: el equipo necesita reiniciarse antes de continuar,
+    # ver `app/installer.py` y la sección "SAP GUI 7.8" del README) -- la
+    # casilla igual queda en rojo/sin marcar, como cualquier fallo (sigue
+    # contando como error en el reporte y en `_results["error"]"), pero
+    # con un texto que le dice al técnico qué hacer en vez de un código
+    # críptico sin contexto. Cada paso de `extra_steps` puede tener su
+    # propia clave `"exit_code_messages"` con el mismo formato (ver
+    # `_iter_steps` en app/installer.py).
+    exit_code_messages: dict[str, str] = field(default_factory=dict)
 
     def resolved_installer_path(self, installers_base_path: str) -> Path:
         base = Path(installers_base_path)
@@ -263,6 +279,7 @@ def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:
                     version=it.get("version", "N/D"),
                     exclusive_group=it.get("exclusive_group", ""),
                     extra_steps=it.get("extra_steps", []),
+                    exit_code_messages=it.get("exit_code_messages", {}),
                 )
                 for it in grp.get("items", [])
             ]

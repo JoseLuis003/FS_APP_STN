@@ -14,8 +14,9 @@ completo de qué se corrigió):
 - Una vez unido el equipo (y aplicados los grupos locales / autologon), se
   le PREGUNTA al técnico antes de reiniciar -- no se reinicia solo.
 
-El técnico solo escribe su usuario (ej. "jperez"); el prefijo de dominio
-"copaair\\" se muestra fijo en la UI y Python lo antepone (ver
+El técnico solo escribe su usuario (ej. "jperez"); el sufijo de dominio
+"@copaair.com" (formato UPN, ver `app/domain_join.py` para el motivo del
+cambio de formato) se muestra fijo en la UI y Python lo agrega (ver
 `app/domain_join.full_username`).
 
 Seguridad: la contraseña nunca se guarda en disco ni se pasa por línea de
@@ -46,7 +47,7 @@ from PySide6.QtWidgets import (
 
 from app.domain_join import (
     OU_OPTIONS,
-    USERNAME_DOMAIN_PREFIX,
+    USERNAME_DOMAIN_SUFFIX,
     BadCredentialsError,
     ComputerNameExistsError,
     DomainJoinError,
@@ -221,12 +222,12 @@ class DominioWindow(QMainWindow):
         form.addRow("Unidad organizativa (OU):", ou_row)
 
         username_row = QHBoxLayout()
-        prefix_label = QLabel(USERNAME_DOMAIN_PREFIX)
-        prefix_label.setStyleSheet("color: #555555; font-weight: 600;")
-        username_row.addWidget(prefix_label)
         self.username_edit = QLineEdit()
         self.username_edit.setPlaceholderText("usuario de dominio")
         username_row.addWidget(self.username_edit, 1)
+        suffix_label = QLabel(USERNAME_DOMAIN_SUFFIX)
+        suffix_label.setStyleSheet("color: #555555; font-weight: 600;")
+        username_row.addWidget(suffix_label)
         form.addRow("Usuario:", username_row)
 
         self.password_edit = QLineEdit()

@@ -1134,8 +1134,9 @@ locales, autologon, reinicio) como si nada.
    al dominio), la Unidad Organizativa (mismas 5 opciones del script
    original: ATO-BCK, ATO-COU-GTE, CGO, CTO, MTO — ver más abajo cómo
    ampliar esta lista consultando el AD real), su usuario (solo el usuario,
-   sin dominio — el prefijo `copaair\` se muestra fijo en la UI y Python lo
-   antepone) y su contraseña.
+   sin dominio — el sufijo UPN `@copaair.com` se muestra fijo en la UI y
+   Python lo agrega, ver `app/domain_join.py` para el motivo de usar UPN
+   en vez del nombre corto NetBIOS) y su contraseña.
 2. Al presionar "UNIR AL DOMINIO", un `DomainJoinWorker` (QThread) corre en
    segundo plano para no congelar la ventana:
    - **Usuario o contraseña incorrectos**: se le avisa al técnico con un

@@ -40,10 +40,26 @@ from app.config import SCRIPTS_DIR
 
 DOMAIN_NAME = "copaair.com"
 
-# El técnico solo escribe su usuario (ej. "jperez"); el prefijo de dominio
-# se muestra fijo en la UI y se antepone acá, para que no haya errores de
+# El técnico solo escribe su usuario (ej. "jperez"); el sufijo de dominio
+# se muestra fijo en la UI y se agrega acá, para que no haya errores de
 # formato ni que el técnico tenga que acordarse de escribirlo.
-USERNAME_DOMAIN_PREFIX = "copaair\\"
+#
+# Se usa el formato UPN ("usuario@copaair.com") y NO el "down-level logon
+# name" con nombre corto NetBIOS ("copaair\usuario", lo que este módulo
+# usaba antes) -- bug real reportado en campo: con "copaair\usuario" la
+# pantalla DOMINIO seguía rechazando credenciales que el técnico confirmó
+# que eran correctas, tanto al unir al dominio como al cargar las OUs
+# desde AD. La sospecha del técnico (y la causa más probable): "copaair"
+# es el nombre DNS del dominio, pero el nombre CORTO NetBIOS registrado en
+# el controlador de dominio no necesariamente es igual -- si no coincide
+# exactamente, Windows no puede resolver a qué dominio te referís y la
+# autenticación falla de una forma indistinguible de "usuario o
+# contraseña incorrectos". El formato UPN no tiene ese problema: no
+# depende de adivinar el nombre NetBIOS correcto, es el formato estándar
+# de Active Directory, y funciona igual de bien tanto para `Add-Computer`
+# (unión al dominio) como para los binds LDAP de `list_ous.ps1` /
+# `check_computer_name.ps1`.
+USERNAME_DOMAIN_SUFFIX = "@copaair.com"
 
 # (etiqueta mostrada en el combo, DN completo) -- mismas 5 opciones y mismos
 # DN que el script original, en el mismo orden (1-5).
@@ -103,13 +119,15 @@ class ComputerNameExistsError(DomainJoinError):
 
 
 def full_username(username: str) -> str:
-    """Antepone "copaair\\" al usuario que escribe el técnico. Si el
-    técnico ya escribió el dominio de alguna forma (`copaair\\usuario` o
-    `usuario@copaair.com`), se respeta tal cual en vez de duplicarlo."""
+    """Agrega el sufijo UPN "@copaair.com" al usuario que escribe el
+    técnico (ver el comentario de `USERNAME_DOMAIN_SUFFIX` arriba para el
+    motivo del cambio de formato). Si el técnico ya escribió el dominio de
+    alguna forma (`copaair\\usuario` o `usuario@copaair.com`), se respeta
+    tal cual en vez de duplicarlo."""
     username = (username or "").strip()
     if "\\" in username or "@" in username:
         return username
-    return f"{USERNAME_DOMAIN_PREFIX}{username}"
+    return f"{username}{USERNAME_DOMAIN_SUFFIX}"
 
 
 def _run_powershell_script(

@@ -36,6 +36,24 @@ param(
 # Win32 1326 (ERROR_LOGON_FAILURE) que join_domain.ps1 -- duplicado acá (no
 # importado de un modulo comun) por el mismo precedente de scripts
 # self-contained del proyecto.
+#
+# IMPORTANTE (bug real de campo corregido): a diferencia de Add-Computer
+# (join_domain.ps1), que lanza un System.ComponentModel.Win32Exception
+# "de verdad" con .NativeErrorCode, un bind LDAP fallido vía
+# DirectoryEntry.RefreshCache() (ADSI) lanza en cambio un
+# System.DirectoryServices.DirectoryServicesCOMException (hereda de
+# COMException, NO de Win32Exception) -- confirmado en campo: con
+# credenciales incorrectas, el técnico veía el error crudo de PowerShell
+# sin procesar: 'The following exception occurred while retrieving
+# member "RefreshCache": "The user name or password is incorrect."'
+# (PowerShell envuelve así cualquier fallo al invocar un miembro --
+# propiedad o método -- sobre un objeto ADSI/DirectoryEntry, pero
+# conserva la excepción real en .InnerException). Como
+# Test-BadCredentialsError solo buscaba Win32Exception, nunca la
+# encontraba, y el error caía en la rama genérica RESULT_ERROR en vez de
+# RESULT_BAD_CREDENTIALS -- por eso la UI no ofrecía reintentar
+# credenciales, solo mostraba el texto crudo. Corregido revisando también
+# COMException/DirectoryServicesCOMException (ver Test-BadCredentialsError).
 
 $ErrorActionPreference = "Stop"
 $password = $null
@@ -49,6 +67,27 @@ function Test-BadCredentialsError {
     while ($null -ne $current) {
         if ($current -is [System.ComponentModel.Win32Exception] -and $current.NativeErrorCode -eq 1326) {
             return $true
+        }
+        # Ver el comentario grande más arriba: DirectoryEntry.RefreshCache()
+        # lanza un COMException (o su subclase DirectoryServicesCOMException),
+        # nunca un Win32Exception -- hay que revisarlo por separado.
+        if ($current -is [System.Runtime.InteropServices.COMException]) {
+            # .ErrorCode es el HRESULT completo (ej. 0x8007052E para
+            # credenciales inválidas) -- sus 16 bits bajos son el MISMO
+            # código nativo de Win32 (1326) que usa join_domain.ps1, sin
+            # importar el idioma de Windows del controlador de dominio.
+            if (($current.ErrorCode -band 0xFFFF) -eq 1326) {
+                return $true
+            }
+            # Respaldo adicional, solo para DirectoryServicesCOMException:
+            # el "extended error" que devuelve el controlador de dominio
+            # para credenciales inválidas siempre incluye "data 52e" (52e
+            # hex = 1326) en ExtendedErrorMessage -- un código numérico
+            # fijo de Active Directory, no un texto que cambie de idioma.
+            if ($current -is [System.DirectoryServices.DirectoryServicesCOMException] -and
+                $current.ExtendedErrorMessage -match "data 52e") {
+                return $true
+            }
         }
         $current = $current.InnerException
     }

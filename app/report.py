@@ -130,11 +130,16 @@ FAILED_VERSION_LABEL = "FALLO"
 # NetFX35/BFirst cuando `_is_reboot_pending()` detecta un reinicio
 # pendiente antes de correr DISM, ver `app/netfx35_setup.py`). En vez del
 # genérico `FAILED_VERSION_LABEL` ("FALLO"), estos se distinguen en el
-# reporte con `REBOOT_PENDING_VERSION_LABEL` -- así el técnico que
-# revisa el reporte (no necesariamente el mismo que instaló) ve de un
-# vistazo cuáles ítems fallidos solo necesitan un reinicio y reintentar,
-# sin tener que ir a `logs/` a averiguarlo.
-REBOOT_PENDING_VERSION_LABEL = "FALLO (Reinicio Pendiente)"
+# reporte con `REBOOT_PENDING_VERSION_LABEL` -- a propósito SIN el
+# prefijo "FALLO" (pedido explícito: no es un fallo real sin resolver,
+# es un ítem que va a terminar de instalarse bien apenas el técnico
+# reinicie y vuelva a marcar la casilla, así que mostrar "FALLO" ahí
+# induciría a error) -- así el técnico que revisa el reporte (no
+# necesariamente el mismo que instaló) ve de un vistazo cuáles ítems
+# solo necesitan un reinicio y reintentar, sin tener que ir a `logs/` a
+# averiguarlo. La fila igual se resalta en rojo/negrita en el HTML,
+# como cualquier ítem con `success=False` (ver `_app_row_html`).
+REBOOT_PENDING_VERSION_LABEL = "Reinicio Pendiente"
 
 # Frase que cualquier mensaje de error "a propósito" del catálogo (un
 # `exit_code_messages` en apps.json, o una excepción lanzada a mano en
@@ -213,8 +218,9 @@ def generate_report(
     # "reinicio pendiente" y pasó `REBOOT_PENDING_VERSION_LABEL` como
     # `version` (ver `MainWindow._on_item_finished`, que usa
     # `is_reboot_pending_message()` para decidirlo), se respeta tal cual
-    # en vez de pisarlo -- así el reporte distingue "FALLO" de "FALLO
-    # (Reinicio Pendiente)".
+    # en vez de pisarlo -- así el reporte distingue "FALLO" (fallo real
+    # sin resolver) de "Reinicio Pendiente" (solo falta reiniciar y
+    # reintentar).
     rows = [
         (
             name,

@@ -64,11 +64,34 @@ $searcher = $null
 $results = $null
 
 function Test-BadCredentialsError {
+    # IMPORTANTE (bug real de campo corregido, ver también list_ous.ps1):
+    # a diferencia de Add-Computer (join_domain.ps1), que lanza un
+    # Win32Exception "de verdad", un bind LDAP fallido vía
+    # DirectoryEntry.RefreshCache() (ADSI, lo que usa este script) lanza
+    # en cambio un System.DirectoryServices.DirectoryServicesCOMException
+    # (hereda de COMException, NO de Win32Exception) -- con credenciales
+    # incorrectas, el técnico veía el error crudo de PowerShell sin
+    # procesar en vez del flujo normal de "reintentar credenciales",
+    # porque este chequeo solo buscaba Win32Exception y nunca lo
+    # encontraba.
     param([System.Exception]$Exception)
     $current = $Exception
     while ($null -ne $current) {
         if ($current -is [System.ComponentModel.Win32Exception] -and $current.NativeErrorCode -eq 1326) {
             return $true
+        }
+        if ($current -is [System.Runtime.InteropServices.COMException]) {
+            # .ErrorCode es el HRESULT completo (ej. 0x8007052E) -- sus 16
+            # bits bajos son el mismo código nativo de Win32 (1326).
+            if (($current.ErrorCode -band 0xFFFF) -eq 1326) {
+                return $true
+            }
+            # Respaldo: "data 52e" (52e hex = 1326) en el "extended error"
+            # de AD -- código numérico fijo, no cambia con el idioma.
+            if ($current -is [System.DirectoryServices.DirectoryServicesCOMException] -and
+                $current.ExtendedErrorMessage -match "data 52e") {
+                return $true
+            }
         }
         $current = $current.InnerException
     }

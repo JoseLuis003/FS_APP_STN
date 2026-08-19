@@ -51,8 +51,8 @@
               "extra_steps": [
                 { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/NoDlg /product=SAPGUI", "installer_type": "exe",
                   "exit_code_messages": {
-                    "144": "Pendiente reinicio: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla.",
-                    "145": "Pendiente reinicio: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla."
+                    "144": "Reinicio Pendiente: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla.",
+                    "145": "Reinicio Pendiente: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla."
                   } },
                 { "installer": "SAP_GUI_7.80/parche 32 bits/GUI800_4-80006341.EXE", "silent_args": "/NoDlg", "installer_type": "exe" },
                 { "installer": "SAP_GUI_7.80/Win32/SAPSetupSLC.exe", "silent_args": "/noDLG", "installer_type": "exe" },

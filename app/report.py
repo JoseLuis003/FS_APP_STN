@@ -124,6 +124,41 @@ def _sanitize_for_filename(value: str) -> str:
 
 FAILED_VERSION_LABEL = "FALLO"
 
+# Caso especial dentro de las que fallaron: un ítem que necesita que el
+# técnico reinicie el equipo antes de reintentar (ej. SAP GUI 7.8 con
+# código 144/145 -- ver `exit_code_messages` en `config/apps.json` --, o
+# NetFX35/BFirst cuando `_is_reboot_pending()` detecta un reinicio
+# pendiente antes de correr DISM, ver `app/netfx35_setup.py`). En vez del
+# genérico `FAILED_VERSION_LABEL` ("FALLO"), estos se distinguen en el
+# reporte con `REBOOT_PENDING_VERSION_LABEL` -- así el técnico que
+# revisa el reporte (no necesariamente el mismo que instaló) ve de un
+# vistazo cuáles ítems fallidos solo necesitan un reinicio y reintentar,
+# sin tener que ir a `logs/` a averiguarlo.
+REBOOT_PENDING_VERSION_LABEL = "FALLO (Reinicio Pendiente)"
+
+# Frase que cualquier mensaje de error "a propósito" del catálogo (un
+# `exit_code_messages` en apps.json, o una excepción lanzada a mano en
+# algún paso "python") debe incluir -- las dos palabras, en cualquier
+# orden y sin importar mayúsculas/minúsculas -- para que
+# `is_reboot_pending_message()` lo reconozca como un caso de "necesita
+# reinicio", no un fallo real sin resolver. Deliberadamente laxo (dos
+# palabras sueltas, no una frase exacta) para no depender de que todo
+# mensaje futuro use exactamente el mismo orden de palabras ("Reinicio
+# Pendiente" vs "Pendiente reinicio"); seguro porque estos mensajes
+# siempre son texto que ESTA APP redacta a propósito (nunca stdout/stderr
+# crudo de un instalador de terceros, que jamás contendría estas dos
+# palabras juntas por casualidad).
+_REBOOT_PENDING_WORDS = ("reinicio", "pendiente")
+
+
+def is_reboot_pending_message(message: str) -> bool:
+    """`True` si `message` (el mensaje de error que ve el técnico en el
+    tooltip de la casilla) indica que el ítem necesita que el equipo
+    reinicie antes de reintentar -- ver `_REBOOT_PENDING_WORDS` arriba
+    para el criterio exacto."""
+    lowered = (message or "").lower()
+    return all(word in lowered for word in _REBOOT_PENDING_WORDS)
+
 
 def generate_report(
     records: list[tuple[str, str, datetime.datetime, bool]], section_label: str = ""
@@ -171,8 +206,22 @@ def generate_report(
     html_path = REPORTS_DIR / f"{base_name}.html"
     csv_path = REPORTS_DIR / f"{base_name}.csv"
 
+    # Para un ítem fallido, `version` normalmente se descarta y se
+    # reemplaza por el genérico FAILED_VERSION_LABEL ("FALLO") -- la
+    # versión real nunca llegó a instalarse. La ÚNICA excepción: si quien
+    # armó el registro ya decidió que este fallo puntual es un caso de
+    # "reinicio pendiente" y pasó `REBOOT_PENDING_VERSION_LABEL` como
+    # `version` (ver `MainWindow._on_item_finished`, que usa
+    # `is_reboot_pending_message()` para decidirlo), se respeta tal cual
+    # en vez de pisarlo -- así el reporte distingue "FALLO" de "FALLO
+    # (Reinicio Pendiente)".
     rows = [
-        (name, version if success else FAILED_VERSION_LABEL, ts.strftime("%Y-%m-%d %H:%M:%S"), success)
+        (
+            name,
+            version if (success or version == REBOOT_PENDING_VERSION_LABEL) else FAILED_VERSION_LABEL,
+            ts.strftime("%Y-%m-%d %H:%M:%S"),
+            success,
+        )
         for name, version, ts, success in records
     ]
 

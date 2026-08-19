@@ -318,10 +318,17 @@ pendiente (cualquiera de los 3 alcanza):
   reiniciar.
 
 Si cualquiera de los 3 está presente, `ensure_netfx35_installed()` lanza
-`NetFx35SetupError` al instante, con un mensaje que le pide al técnico
-reiniciar el equipo y volver a marcar la casilla — en vez de colgarse
-otros 10 minutos con el mismo resultado. Aplica tanto al paso `netfx35_setup`
-de BFirst como al ítem independiente "NetFX35".
+`NetFx35SetupError` al instante, con un mensaje que empieza con
+**"Reinicio Pendiente: ..."** y le pide al técnico reiniciar el equipo y
+volver a marcar la casilla — en vez de colgarse otros 10 minutos con el
+mismo resultado. Aplica tanto al paso `netfx35_setup` de BFirst como al
+ítem independiente "NetFX35". Mismo criterio que SAP GUI 144/145 (ver
+más abajo): la casilla queda en rojo como cualquier fallo, y en el
+reporte final la columna de versión muestra **"FALLO (Reinicio
+Pendiente)"** en vez del "FALLO" genérico (`is_reboot_pending_message()`
+en `app/report.py` detecta el mensaje por contener las palabras
+"reinicio" y "pendiente", así que este caso y el de SAP GUI se
+distinguen igual en el reporte con el mismo mecanismo).
 
 ### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
 
@@ -456,8 +463,8 @@ en este README, ese paso tiene configurado un `exit_code_messages` (ver
 `AppItem` en `app/config.py` y `InstallWorker.run()` en
 `app/installer.py`): si falla justo con el código 144 o 145, la casilla
 queda en rojo/sin marcar como cualquier fallo (sigue contando como
-error en `_results` y en el reporte), pero el tooltip muestra
-**"Pendiente reinicio: el componente VC++ que se acaba de instalar
+error en `_results`), pero el tooltip muestra
+**"Reinicio Pendiente: el componente VC++ que se acaba de instalar
 necesita que reinicies el equipo antes de continuar. Reinicia y vuelve
 a marcar esta casilla."** en vez del genérico "código de salida 145" —
 el código real de todos modos queda igual en `logs/`. `exit_code_messages`
@@ -466,6 +473,19 @@ cualquier ítem, en `config/apps.json` o `config/ltp_css_apps.json`,
 puede definir su propio `"exit_code_messages": {"<código>": "<mensaje>"}`
 para reemplazar el mensaje genérico en códigos de salida "conocidos"
 puntuales.
+
+En el **reporte final** (ver la sección "Reporte de instalación" más
+abajo), este caso puntual también se distingue del resto de las fallas:
+`MainWindow._on_item_finished` usa `is_reboot_pending_message()`
+(`app/report.py`) para detectar que el mensaje habla de un reinicio
+pendiente (busca las palabras "reinicio" y "pendiente" en el mensaje,
+sin importar el orden ni mayúsculas/minúsculas — funciona con cualquier
+`exit_code_messages` que las incluya, no solo con el de SAP GUI, y
+también con el caso de NetFX35/BFirst más abajo), y en ese caso la
+columna de versión muestra **"FALLO (Reinicio Pendiente)"** en vez del
+"FALLO" genérico — así, quien revisa el reporte (no necesariamente el
+mismo técnico que instaló) ve de un vistazo cuáles ítems fallidos solo
+necesitan un reinicio y reintentar, sin tener que abrir `logs/`.
 
 Paso extra (`installer_type: "python"`, `sap_gui_setup`), el ÚLTIMO de
 los 4 pasos extra del ítem `sap_gui` (después de `NwSapSetup.exe`, el
@@ -1066,11 +1086,27 @@ actualízalo con la versión real de cada paquete). Las que fallaron
 (`FAILED_VERSION_LABEL`, `app/report.py`) se distinguen de un vistazo:
 
 - En la columna de versión se muestra literalmente **"FALLO"** en vez de
-  la versión real (que nunca llegó a instalarse).
+  la versión real (que nunca llegó a instalarse) — salvo el caso
+  especial de abajo, que muestra **"FALLO (Reinicio Pendiente)"**.
 - En el HTML, toda la fila se resalta en **rojo y negrita**
   (`_app_row_html` / clase CSS `row-failed`) — en el CSV (texto plano,
-  sin color/negrita posible) se distinguen solo por el "FALLO" en la
-  columna de versión.
+  sin color/negrita posible) se distinguen solo por el "FALLO" (o
+  "FALLO (Reinicio Pendiente)") en la columna de versión.
+
+**Caso especial dentro de las que fallan — "FALLO (Reinicio
+Pendiente)"** (`REBOOT_PENDING_VERSION_LABEL`, `app/report.py`): cuando
+el ítem falló específicamente porque el equipo necesita que el técnico
+lo reinicie antes de reintentar (SAP GUI 144/145, o NetFX35/BFirst
+cuando se detecta un reinicio pendiente antes de correr DISM — ver esas
+secciones más arriba), la columna de versión muestra "FALLO (Reinicio
+Pendiente)" en vez del "FALLO" genérico, para que se distinga de un
+fallo real sin resolver sin tener que abrir `logs/`.
+`MainWindow._on_item_finished` decide esto con
+`is_reboot_pending_message()`: busca las palabras "reinicio" y
+"pendiente" en el mensaje de error (en cualquier orden, sin importar
+mayúsculas/minúsculas) — funciona con cualquier mensaje personalizado
+del catálogo (`exit_code_messages`) o lanzado a mano en un paso
+"python" que las incluya, no es específico de ningún ítem puntual.
 
 El detalle del error en sí (mensaje completo, código de salida, etc.) NO
 va en el reporte — sigue viviendo únicamente en `logs/`, donde ya queda

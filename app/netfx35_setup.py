@@ -183,9 +183,9 @@ def ensure_netfx35_installed(installers_base_path: str) -> str:
     actualizaciones reales de Windows."""
     if _is_reboot_pending():
         raise NetFx35SetupError(
-            "Hay un reinicio de Windows pendiente (probablemente por una actualización que se "
-            "acaba de instalar) -- DISM no puede habilitar .NET Framework 3.5 hasta que el equipo "
-            "reinicie. Reinicia el equipo y vuelve a marcar esta casilla."
+            "Reinicio Pendiente: hay un reinicio de Windows pendiente (probablemente por una "
+            "actualización que se acaba de instalar) -- DISM no puede habilitar .NET Framework 3.5 "
+            "hasta que el equipo reinicie. Reinicia el equipo y vuelve a marcar esta casilla."
         )
 
     command = _build_dism_command(installers_base_path)

@@ -54,7 +54,7 @@ from app.copa_id_setup import (
 )
 from app.installer import InstallLogger, InstallManager
 from app.installer_detect import detect_silent_args
-from app.report import generate_report
+from app.report import REBOOT_PENDING_VERSION_LABEL, generate_report, is_reboot_pending_message
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
 
 # Id del ítem especial "Copa ID (Asset Tag)" (columna 1, junto a los demás
@@ -1000,8 +1000,20 @@ class MainWindow(QMainWindow):
         # Se registra en `_install_records` tanto si tuvo éxito como si
         # falló -- las que fallan aparecen igual en el reporte final (ver
         # `app/report.py`), con "FALLO" en la columna de versión en vez de
-        # la versión real, resaltadas en rojo y negrita.
-        self._install_records.append((item.label, item.version, datetime.now(), success))
+        # la versión real, resaltadas en rojo y negrita. Caso especial
+        # dentro de las que fallan: si el mensaje indica que el ítem
+        # necesita que el técnico reinicie el equipo (ej. SAP GUI 144/145,
+        # o NetFX35/BFirst cuando se detecta un reinicio pendiente ANTES
+        # de correr DISM -- ver `is_reboot_pending_message` en
+        # `app/report.py`), se registra con `REBOOT_PENDING_VERSION_LABEL`
+        # en vez de `item.version`, para que el reporte muestre "FALLO
+        # (Reinicio Pendiente)" en vez del "FALLO" genérico -- la casilla
+        # en sí ya se marca en rojo igual que cualquier otro fallo, sin
+        # necesitar nada especial acá (ver más abajo).
+        version_for_report = item.version
+        if not success and is_reboot_pending_message(message):
+            version_for_report = REBOOT_PENDING_VERSION_LABEL
+        self._install_records.append((item.label, version_for_report, datetime.now(), success))
         if success:
             self._results["ok"] += 1
             # Al llegar al 100%, el ítem desaparece de la lista (igual que la app original).

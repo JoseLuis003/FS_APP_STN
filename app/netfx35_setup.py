@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import ntpath
 import subprocess
+import sys
 
 # DISM puede tardar bastante si la fuente local está en un disco lento o
 # si igual necesita revisar/completar archivos.
@@ -65,6 +66,78 @@ _SOURCE_SUBPATH_PARTS = ("NetFX35", "sources", "sxs")
 class NetFx35SetupError(Exception):
     """Error esperado si no se pudo habilitar .NET Framework 3.5. El
     mensaje ya viene listo para mostrárselo tal cual al técnico."""
+
+
+# Registro de un caso real de campo (log de instalación, 2026-08-19): en
+# la MISMA corrida, "Windows-Updates-w11" instaló actualizaciones reales
+# de Windows y terminó apenas 15 segundos antes de que "BFirst" (que
+# depende de este módulo) intentara correr DISM -- DISM se quedó colgado
+# los 10 minutos completos de `_TIMEOUT_SECONDS` hasta que
+# `subprocess.run` lo mató por timeout. Volvió a pasar más tarde en la
+# misma corrida con el ítem independiente "NetFX35" (36 minutos después,
+# sin que nada más se hubiera instalado de por medio) -- descartando que
+# fuera una finalización breve en curso: el equipo había quedado en
+# **reinicio pendiente** por la actualización de Windows, y DISM
+# `/Online /Enable-Feature` no puede tomar el lock del almacén de
+# componentes (CBS) hasta que ese reinicio se complete, así que se queda
+# esperando en vez de fallar rápido con un error claro.
+#
+# `_is_reboot_pending()` revisa los 3 indicadores estándar de Windows de
+# que hay un reinicio pendiente (cualquiera de los 3 alcanza) ANTES de
+# llamar a DISM, para fallar al instante con un mensaje claro en vez de
+# colgarse otra vez 10 minutos con el mismo resultado:
+#
+# - `...\\Component Based Servicing\\RebootPending`: existe SOLO si una
+#   operación de CBS (la misma que usa DISM para /Enable-Feature) dejó al
+#   equipo esperando un reinicio para completarse -- si esta clave existe,
+#   DISM se queda esperando el lock del CBS hasta que el equipo reinicia.
+# - `...\\WindowsUpdate\\Auto Update\\RebootRequired`: existe cuando
+#   Windows Update instaló algo que requiere reiniciar para terminar de
+#   aplicarse -- justo el caso real de arriba.
+# - `...\\Session Manager\\PendingFileRenameOperations`: un VALOR (no solo
+#   la existencia de la clave) con archivos pendientes de renombrar o
+#   borrar al reiniciar.
+#
+# Fuente: "Determine Pending Reboot Status -- PowerShell Style!"
+# (Microsoft Scripting Blog/DevBlogs), que documenta estos mismos 3
+# indicadores como la forma estándar de detectar un reinicio pendiente en
+# Windows: https://devblogs.microsoft.com/scripting/determine-pending-reboot-statuspowershell-style-part-1/
+_REBOOT_PENDING_KEY_CHECKS = (
+    (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending", None),
+    (r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired", None),
+)
+_PENDING_FILE_RENAME_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager"
+_PENDING_FILE_RENAME_VALUE = "PendingFileRenameOperations"
+
+
+def _is_reboot_pending() -> bool:
+    """Revisa si Windows quedó en "reinicio pendiente" (ver el comentario
+    de arriba) -- devuelve `False` sin lanzar nada fuera de Windows (no
+    hay `winreg`) o si no se pudo leer alguna de las claves por cualquier
+    motivo (mismo criterio conservador que el resto de la app para datos
+    "informativos" del equipo, ver `app/report.py`: mejor asumir que no
+    hay reinicio pendiente y dejar que DISM lo intente, que bloquear la
+    instalación por un error al leer el registro)."""
+    if sys.platform != "win32":
+        return False
+    import winreg
+
+    for key_path, _unused in _REBOOT_PENDING_KEY_CHECKS:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
+                return True
+        except OSError:
+            continue
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _PENDING_FILE_RENAME_KEY) as key:
+            value, _value_type = winreg.QueryValueEx(key, _PENDING_FILE_RENAME_VALUE)
+            if value:
+                return True
+    except OSError:
+        pass
+
+    return False
 
 
 def _build_dism_command(installers_base_path: str) -> list[str]:
@@ -99,7 +172,22 @@ def ensure_netfx35_installed(installers_base_path: str) -> str:
     Lanza `NetFx35SetupError` si DISM falla -- por ejemplo, si la
     carpeta `NetFX35\\sources\\sxs` no vino junto a los demás
     instaladores, o si el equipo tampoco tiene acceso a Windows Update
-    como alternativa (DISM necesita alguna de las 2 fuentes)."""
+    como alternativa (DISM necesita alguna de las 2 fuentes) -- o, ANTES
+    de intentar correrlo siquiera, si el equipo quedó con un reinicio
+    pendiente (ver `_is_reboot_pending` y el caso real documentado ahí):
+    correr DISM en ese estado no falla rápido, se queda colgado hasta
+    agotar `_TIMEOUT_SECONDS` (10 minutos) esperando el lock del CBS que
+    no se libera hasta que el equipo reinicia -- caso real de campo
+    confirmado dos veces en la misma corrida (BFirst y NetFX35
+    independiente), justo después de que "Windows-Updates-w11" instalara
+    actualizaciones reales de Windows."""
+    if _is_reboot_pending():
+        raise NetFx35SetupError(
+            "Hay un reinicio de Windows pendiente (probablemente por una actualización que se "
+            "acaba de instalar) -- DISM no puede habilitar .NET Framework 3.5 hasta que el equipo "
+            "reinicie. Reinicia el equipo y vuelve a marcar esta casilla."
+        )
+
     command = _build_dism_command(installers_base_path)
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)

@@ -283,6 +283,46 @@ El ítem `bfirst` (2da columna) tiene 3 pasos, en este orden:
    `C:\Copaair` si no existía) y `/Y` (sobrescribir sin preguntar), que
    es justamente lo que hace este paso.
 
+#### Problema real de campo: DISM colgado 10 minutos por reinicio pendiente
+
+Detectado en un log de instalación real (2026-08-19): en la MISMA corrida,
+"Windows-Updates-w11" instaló actualizaciones reales de Windows y terminó
+apenas 15 segundos antes de que "BFirst" (que depende de `netfx35_setup`)
+intentara correr DISM — se quedó colgado los 10 minutos completos de
+`_TIMEOUT_SECONDS` hasta que `subprocess.run` lo mató por timeout. Volvió
+a pasar más tarde en la misma corrida con el ítem independiente "NetFX35"
+(36 minutos después, sin que nada más se hubiera instalado de por medio,
+descartando que fuera solo una finalización breve en curso).
+
+La causa: la actualización de Windows dejó al equipo con un **reinicio
+pendiente**, y `DISM /Online /Enable-Feature` no puede tomar el lock del
+almacén de componentes (CBS, Component-Based Servicing) hasta que ese
+reinicio se complete — en vez de fallar rápido con un error claro, se
+queda esperando ese lock.
+
+`_is_reboot_pending()` (`app/netfx35_setup.py`) revisa, ANTES de llamar a
+DISM, los 3 indicadores estándar de Windows de que hay un reinicio
+pendiente (cualquiera de los 3 alcanza):
+
+- `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based
+  Servicing\RebootPending`: existe SOLO si una operación de CBS (la
+  misma que usa DISM para `/Enable-Feature`) dejó al equipo esperando un
+  reinicio para completarse.
+- `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto
+  Update\RebootRequired`: existe cuando Windows Update instaló algo que
+  requiere reiniciar para terminar de aplicarse — justo el caso real de
+  arriba.
+- `HKLM\SYSTEM\CurrentControlSet\Control\Session
+  Manager\PendingFileRenameOperations`: un VALOR (no solo la existencia
+  de la clave) con archivos pendientes de renombrar o borrar al
+  reiniciar.
+
+Si cualquiera de los 3 está presente, `ensure_netfx35_installed()` lanza
+`NetFx35SetupError` al instante, con un mensaje que le pide al técnico
+reiniciar el equipo y volver a marcar la casilla — en vez de colgarse
+otros 10 minutos con el mismo resultado. Aplica tanto al paso `netfx35_setup`
+de BFirst como al ítem independiente "NetFX35".
+
 ### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
 
 El ítem `dell_command` tiene 2 pasos, en este orden:

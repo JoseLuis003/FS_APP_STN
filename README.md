@@ -326,6 +326,60 @@ El ítem `dell_command` tiene 2 pasos, en este orden:
 2. El EXE real de Dell Command Update 5.7.1 (`extra_step`, sin cambios
    — sigue siendo `installer_type: "exe"` con `/s`).
 
+### Copa ID (Asset Tag) (`app/copa_id_setup.py`)
+
+En la columna 1 del catálogo APPS, junto a los demás ítems de Dell (DELL
+Command Update, DELL Optimizer, DELL OwnerTag), el ítem `copa_id` es un
+caso especial: a diferencia de cualquier otro ítem del catálogo, no es
+solo un checkbox — tiene un campo de texto al lado donde el técnico
+escribe (o confirma) el **Asset Tag** de 6 dígitos que se va a grabar en
+el BIOS del equipo vía **Dell Command | Configure** (`cctk.exe`).
+
+- El campo solo acepta dígitos numéricos, hasta un máximo de 6 (validador
+  de Qt + `setMaxLength(6)` como respaldo — no deja escribir letras ni un
+  7mo dígito).
+- Al abrir la pantalla, el campo se **prellena automáticamente** con el
+  Asset Tag que YA tenga configurado el equipo, consultado vía WMI
+  (`Win32_SystemEnclosure.SMBIOSAssetTag`, reutilizando
+  `app.report.get_asset_tag()` — la misma consulta que ya usa el reporte
+  de instalación, sin duplicar lógica de PowerShell). Si el equipo no
+  tiene ningún Asset Tag configurado, o lo que devuelve WMI no es un valor
+  válido de 6 dígitos (por ejemplo, un equipo nuevo de fábrica trae texto
+  genérico como "Default string", o la consulta WMI falla y devuelve "No
+  disponible"), el campo queda **vacío** con el placeholder **"NO SETUP"**
+  en vez de prellenarlo con un valor que de todos modos no pasaría la
+  validación.
+- Al presionar INSTALAR con la casilla de Copa ID marcada, se valida que
+  el campo tenga exactamente 6 dígitos (si no, aparece un aviso y no se
+  arranca nada); si pasa la validación, se ejecuta:
+
+  ```
+  <installers_base_path>\Copa_ID\cctk.exe --asset=<valor del campo>
+  ```
+
+  (hay que colocar `cctk.exe` dentro de una carpeta `Copa_ID` junto a los
+  demás instaladores — nunca se descarga ni se asume una ruta absoluta,
+  mismo criterio que el resto del catálogo).
+- Igual que "Shares Configuracion"/"AppShell Configuracion" en LTP / CSS
+  (ver más abajo), este ítem **no pasa por el motor de instalación
+  genérico** (`InstallManager`/`InstallWorker`): `MainWindow._on_installar()`
+  lo saca de la cola normal y lo aplica aparte, sincrónico en el hilo de
+  la UI (`_run_copa_id_asset_tag`) — a diferencia de esos dos casos, no
+  hace falta diferirlo a después de que termine la cola normal, porque no
+  depende de que ningún otro ítem termine antes; puede aplicarse en la
+  misma corrida que otras apps sin ningún orden especial.
+- El resultado se refleja en la casilla exactamente igual que cualquier
+  otro ítem: si `cctk.exe` termina con código de salida distinto de 0 (o
+  no se pudo ejecutar, o se agotó el tiempo de espera), la casilla queda
+  en **rojo, desmarcada, con el detalle del error en el tooltip** — sin
+  ocultarse, para que el técnico pueda corregir el Asset Tag y reintentar.
+  Si tiene éxito, la casilla se **oculta y se desmarca** (mismo fix de
+  reinstalación fantasma que el resto del catálogo — ver más arriba) y el
+  Asset Tag grabado queda registrado en el reporte final de instalación,
+  en la columna de "versión" (reutilizada acá con otro sentido: no es un
+  número de versión de software, es el valor que quedó grabado en el
+  BIOS).
+
 ### SAP GUI 7.8 (`app/sap_gui_setup.py`)
 
 El ítem `sap_gui` tiene 5 pasos: `vstor_redist.exe` (principal),
@@ -1145,6 +1199,7 @@ FS_APP_STN/
 │   ├── shortcuts.py           # crea los accesos directos de Shares (COM) + copia los de "Shortcuts" (STN)
 │   ├── appshell_config_apply.py # edita el INI (ATB/BTP/DCP) y Mastcom.xml (BGR/OCR) de "AppShell Configuracion"
 │   ├── appshell_post_install.py # paso post-instalación de AppShell 4.00.0030 (reemplaza "CSS permision.bat")
+│   ├── copa_id_setup.py       # "Copa ID (Asset Tag)" (APPS, 1ra columna): detecta/valida el Asset Tag y corre cctk.exe --asset=
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
 │   ├── windows_activation.py  # "Activar Windows" (APPS, 2da columna): valida dominio + slmgr.vbs /ipk /ato
 │   ├── branding_setup.py      # "BackGround" (APPS, 2da columna): BGInfo + pantalla de bloqueo (port de background.bat)
@@ -1268,6 +1323,13 @@ Cada aplicación se define así:
   paso instala un paquete con su propio número de versión distinto al del
   ítem principal — útil quirúrgicamente para no perder esa referencia
   cuando, como en CUSTOM, cada paso es en realidad una aplicación distinta.
+- `copa_id` es un caso especial, igual que `shares_configuracion`/
+  `appshell_configuracion` en `ltp_css_apps.json`: `installer` queda vacío
+  a propósito porque no instala nada — es un checkbox con un campo de
+  texto al lado (el Asset Tag) que, al presionar INSTALAR, corre
+  `Copa_ID\cctk.exe --asset=<valor>` en vez de pasar por el motor de
+  instalación genérico (ver la sección "Copa ID (Asset Tag)" más arriba y
+  `app/copa_id_setup.py`).
 
 ## Carpeta de instaladores por defecto: `CM APPS\APPS`
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Catálogo de aplicaciones instalables. Ajusta 'installer' (ruta relativa a 'installers_base_path' en settings.json), 'silent_args' (parámetros de instalación silenciosa) y 'version' (aparece en el reporte final) según cada paquete real. 'enabled=false' deja el ítem visible pero deshabilitado.",
+  "_comment": "Catálogo de aplicaciones instalables. Ajusta 'installer' (ruta relativa a 'installers_base_path' en settings.json), 'silent_args' (parámetros de instalación silenciosa) y 'version' (aparece en el reporte final) según cada paquete real. 'enabled=false' deja el ítem visible pero deshabilitado. El ítem 'copa_id' es un caso especial: 'installer' queda vacío a propósito porque no instala nada -- es un checkbox con un campo de texto al lado (Asset Tag, prellenado por WMI) que, al presionar INSTALAR, corre 'Copa_ID/cctk.exe --asset=<valor>' (ver app/copa_id_setup.py); MainWindow._on_installar() lo saca de la cola de instalación normal antes de que este campo se llegue a usar.",
   "columns": [
     {
       "groups": [
@@ -13,6 +13,7 @@
               ] },
             { "id": "dell_optimizer",    "label": "DELL Optimizer",            "installer": "DellOptimizer/Dell-Optimizer-Application_5N4CV_WIN64_6.3.4.0_A00.EXE", "silent_args": "/s", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "6.3.4.0" },
             { "id": "dell_ownertag",     "label": "DELL OwnerTag",             "installer": "Dell_Owner_Tag/DELL_Owner_Tag_x64.exe", "silent_args": "/s",              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
+            { "id": "copa_id",           "label": "Copa ID (Asset Tag)",       "installer": "",                             "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "key_fn_mode",       "label": "KEY FN Mode - LAPTOP",      "installer": "FNLockMode/FNLockMode_x64.exe","silent_args": "/s",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
             { "id": "adobe_reader",      "label": "Adobe Reader",              "installer": "AdobeReader/AcroRdrDC2600121771_en_US.exe", "silent_args": "/sPB",               "installer_type": "exe", "default_checked": false, "enabled": true, "version": "2026.001.21771" },
             { "id": "forcepoint",        "label": "NetSkopeClient",            "installer": "NetSkopeClient/Install_NSK.bat","silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },

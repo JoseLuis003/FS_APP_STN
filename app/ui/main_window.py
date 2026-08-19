@@ -8,8 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QRegularExpression, Qt, QTimer
+from PySide6.QtGui import QGuiApplication, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -46,10 +46,25 @@ from app.config import (
     slugify_id,
     update_app_installer,
 )
-from app.installer import InstallManager
+from app.copa_id_setup import (
+    CopaIdSetupError,
+    apply_copa_id_asset_tag,
+    detect_current_asset_tag,
+    is_valid_asset_tag,
+)
+from app.installer import InstallLogger, InstallManager
 from app.installer_detect import detect_silent_args
 from app.report import generate_report
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
+
+# Id del ítem especial "Copa ID (Asset Tag)" (columna 1, junto a los demás
+# ítems de Dell -- ver `app/copa_id_setup.py` para el detalle completo del
+# porqué de este ítem: no es un checkbox más, tiene un campo de texto al
+# lado (`self.asset_tag_edit`) y no pasa por el motor de instalación
+# genérico -- se saca de la cola en `_on_installar()` y se aplica aparte,
+# igual que "Shares Configuracion"/"AppShell Configuracion" en LTP / CSS
+# (ver `app/ui/ltp_css_window.py`).
+COPA_ID_ITEM_ID = "copa_id"
 
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
@@ -655,6 +670,13 @@ class MainWindow(QMainWindow):
         self.checkboxes: dict[str, tuple[AppItem, QCheckBox]] = {}
         self.install_manager: InstallManager | None = None
 
+        # "Copa ID (Asset Tag)" no pasa por `InstallManager`/`InstallWorker`
+        # (ver `_run_copa_id_asset_tag`), así que sin este logger propio su
+        # resultado solo quedaría en la casilla y en `status_label` -- nunca
+        # en la carpeta `logs` (mismo motivo que el logger propio de
+        # `LtpCssWindow`, ver ese archivo).
+        self.logger = InstallLogger()
+
         self._build_ui()
 
         # Revisa cada pocos segundos si la carpeta de instaladores sigue
@@ -671,10 +693,18 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
 
+        # "Copa ID (Asset Tag)" se arma ANTES de las columnas y se le pasa a
+        # `build_checkbox_column` como `inline_widgets` -- así el campo de
+        # texto queda dibujado dentro de la columna 1, justo debajo de esa
+        # casilla, en vez de aparte (mismo mecanismo que usa
+        # `AppShellConfigPanel` en `app/ui/ltp_css_window.py`).
+        self.asset_tag_edit = self._build_asset_tag_edit()
+        inline_widgets = {COPA_ID_ITEM_ID: self.asset_tag_edit}
+
         columns_row = QHBoxLayout()
         columns_row.setSpacing(30)
         for column in self.columns:
-            columns_row.addLayout(self._build_column(column))
+            columns_row.addLayout(self._build_column(column, inline_widgets))
         columns_row.addStretch(1)
         root.addLayout(columns_row)
         root.addStretch(1)
@@ -697,8 +727,25 @@ class MainWindow(QMainWindow):
 
         root.addLayout(self._build_controls())
 
-    def _build_column(self, column) -> QVBoxLayout:
-        return build_checkbox_column(column, self.checkboxes)
+    def _build_column(self, column, inline_widgets: dict | None = None) -> QVBoxLayout:
+        return build_checkbox_column(column, self.checkboxes, inline_widgets)
+
+    def _build_asset_tag_edit(self) -> QLineEdit:
+        """Construye el campo de texto de "Copa ID (Asset Tag)": solo
+        permite dígitos, hasta 6 (validador + `setMaxLength` como respaldo),
+        y se prellena con el Asset Tag que YA tenga configurado el equipo
+        (vía WMI, ver `app.copa_id_setup.detect_current_asset_tag`) -- si no
+        hay ninguno válido, queda vacío con el placeholder "NO SETUP" en vez
+        de prellenarlo con un valor que de todos modos no pasaría la
+        validación."""
+        edit = QLineEdit()
+        edit.setMaxLength(6)
+        edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"^\d{0,6}$")))
+        edit.setPlaceholderText("NO SETUP")
+        detected = detect_current_asset_tag()
+        if detected:
+            edit.setText(detected)
+        return edit
 
     def _build_controls(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -806,12 +853,18 @@ class MainWindow(QMainWindow):
         checked_ids = {
             item_id for item_id, (_item, checkbox) in self.checkboxes.items() if checkbox.isChecked()
         }
+        # Preserva lo que el técnico haya escrito en "Copa ID (Asset Tag)"
+        # -- si no, `_build_ui()` lo reemplazaría por lo que detecte WMI de
+        # nuevo, descartando una corrección manual que el técnico ya hizo.
+        asset_tag_text = self.asset_tag_edit.text() if hasattr(self, "asset_tag_edit") else ""
         self.checkboxes = {}
         self.columns = load_app_columns()
         self._build_ui()
         for item_id, (_item, checkbox) in self.checkboxes.items():
             if item_id in checked_ids:
                 checkbox.setChecked(True)
+        if asset_tag_text:
+            self.asset_tag_edit.setText(asset_tag_text)
 
     def _on_nuevo(self) -> None:
         self._apply_preset(NUEVO_PRESET_IDS)
@@ -829,6 +882,23 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Instalar", "No hay ninguna aplicación seleccionada.")
             return
 
+        # "Copa ID (Asset Tag)" no es un instalador tradicional: se saca de
+        # la cola normal y se aplica aparte, con el valor que haya en
+        # `self.asset_tag_edit` (ver `_run_copa_id_asset_tag` y el docstring
+        # de `app/copa_id_setup.py`).
+        copa_id_entry = self.checkboxes.get(COPA_ID_ITEM_ID)
+        apply_copa_id = copa_id_entry is not None and copa_id_entry[0] in selected
+        asset_tag_value = self.asset_tag_edit.text().strip() if apply_copa_id else ""
+        if apply_copa_id:
+            selected = [it for it in selected if it is not copa_id_entry[0]]
+            if not is_valid_asset_tag(asset_tag_value):
+                QMessageBox.warning(
+                    self,
+                    "Copa ID (Asset Tag)",
+                    "El Asset Tag debe ser exactamente 6 dígitos numéricos antes de presionar INSTALAR.",
+                )
+                return
+
         if not Path(self.settings.installers_base_path).exists():
             QMessageBox.critical(
                 self,
@@ -844,11 +914,73 @@ class MainWindow(QMainWindow):
         self._results = {"ok": 0, "error": 0}
         self._install_records: list[tuple[str, str, datetime, bool]] = []
 
-        self.install_manager = InstallManager(self.settings.installers_base_path, self)
-        self.install_manager.item_started.connect(self._on_item_started)
-        self.install_manager.item_finished.connect(self._on_item_finished)
-        self.install_manager.queue_finished.connect(self._on_queue_finished)
-        self.install_manager.start(selected)
+        # Se aplica ya mismo, sincrónico en el hilo de la UI -- a diferencia
+        # de "Shares Configuracion"/"AppShell Configuracion" en LTP / CSS, no
+        # hace falta diferirlo a `_on_queue_finished()`: no depende de que
+        # ningún otro ítem de la cola termine antes (ver
+        # `app/copa_id_setup.py`).
+        if apply_copa_id:
+            self._run_copa_id_asset_tag(copa_id_entry, asset_tag_value)
+
+        if selected:
+            self.install_manager = InstallManager(self.settings.installers_base_path, self)
+            self.install_manager.item_started.connect(self._on_item_started)
+            self.install_manager.item_finished.connect(self._on_item_finished)
+            self.install_manager.queue_finished.connect(self._on_queue_finished)
+            self.install_manager.start(selected)
+        else:
+            # Solo se había marcado Copa ID (Asset Tag): no hay cola de
+            # instalación normal -- se cierra la corrida igual que si fuera
+            # cualquier otra (mismo criterio que `LtpCssWindow._on_installar`).
+            self._on_queue_finished()
+
+    def _run_copa_id_asset_tag(self, copa_id_entry: tuple[AppItem, QCheckBox], asset_tag: str) -> None:
+        """Graba `asset_tag` en el BIOS vía `cctk.exe --asset=<valor>` (ver
+        `app.copa_id_setup.apply_copa_id_asset_tag`). No pasa por
+        `InstallManager`/`InstallWorker`: se aplica aparte, sincrónico en el
+        hilo de la UI, con exactamente el mismo tratamiento visual que
+        cualquier ítem de la cola normal (casilla en rojo + tooltip si
+        falla, oculta + desmarcada si tiene éxito) para que el técnico no
+        note ninguna diferencia salvo que no muestra la barra de progreso
+        "instalando" (no es un proceso largo)."""
+        item, checkbox = copa_id_entry
+        checkbox.setProperty("installing", "true")
+        checkbox.style().unpolish(checkbox)
+        checkbox.style().polish(checkbox)
+        self.status_label.setText("Copa ID (Asset Tag): grabando en BIOS vía cctk.exe...")
+
+        self.logger.write(f"{item.label}: iniciando -> cctk.exe --asset={asset_tag}")
+        try:
+            detail = apply_copa_id_asset_tag(asset_tag, self.settings.installers_base_path)
+        except CopaIdSetupError as exc:
+            self.logger.write(f"{item.label}: ERROR - {exc}")
+            self._results["error"] += 1
+            self._install_records.append((item.label, item.version, datetime.now(), False))
+            checkbox.setProperty("installing", "false")
+            checkbox.setProperty("failed", "true")
+            checkbox.setChecked(False)
+            checkbox.setToolTip(f"Error: {exc}")
+            checkbox.style().unpolish(checkbox)
+            checkbox.style().polish(checkbox)
+            self.status_label.setText(f"Copa ID (Asset Tag): error - {exc}")
+            return
+
+        self.logger.write(f"{item.label}: OK ({detail})")
+        self._results["ok"] += 1
+        # Se registra el Asset Tag grabado como "versión" en el reporte
+        # final -- es el dato relevante de este ítem, no un número de
+        # versión de software (mismo campo, reutilizado con otro sentido,
+        # igual que hace el resto del catálogo con su `item.version`).
+        self._install_records.append((item.label, asset_tag, datetime.now(), True))
+        checkbox.setProperty("installing", "false")
+        # Desmarcar además de ocultar -- mismo motivo que en
+        # `_on_item_finished`: si no, la casilla queda marcada por debajo y
+        # una corrida posterior la vuelve a aplicar sola.
+        checkbox.setChecked(False)
+        checkbox.setVisible(False)
+        checkbox.style().unpolish(checkbox)
+        checkbox.style().polish(checkbox)
+        self.status_label.setText(f"Copa ID (Asset Tag): {detail}")
 
     # --------------------------------------------------------- señales cola
     def _on_item_started(self, item_id: str) -> None:
@@ -923,5 +1055,9 @@ class MainWindow(QMainWindow):
         self.installar_btn.setEnabled(enabled)
         for _item, checkbox in self.checkboxes.values():
             checkbox.setEnabled(enabled and _item.enabled)
+        if hasattr(self, "asset_tag_edit"):
+            copa_id_entry = self.checkboxes.get(COPA_ID_ITEM_ID)
+            copa_id_enabled = copa_id_entry[0].enabled if copa_id_entry is not None else True
+            self.asset_tag_edit.setEnabled(enabled and copa_id_enabled)
         if enabled:
             reapply_exclusive_constraints(self.checkboxes)

@@ -966,10 +966,26 @@ de la cola de instalación normal antes de llegar a usarlo.
 Al terminar de instalar (o intentar instalar) las aplicaciones seleccionadas,
 la app genera un reporte en `reports/`, en dos formatos:
 
-- `reporte_<equipo>_<fecha>.html`: para verlo o imprimirlo (se abre solo en
+- `reporte_<serie>_<fecha>.html`: para verlo o imprimirlo (se abre solo en
   el navegador al terminar).
-- `reporte_<equipo>_<fecha>.csv`: para importarlo a Excel u otra
+- `reporte_<serie>_<fecha>.csv`: para importarlo a Excel u otra
   herramienta de IT.
+
+**El nombre del archivo se identifica con el número de serie del equipo**
+(`get_serial_number()`, vía WMI — `Win32_BIOS.SerialNumber`), no con el
+nombre de equipo/hostname (pedido explícito): a diferencia del hostname,
+que puede cambiar o quedar en un nombre genérico "DESKTOP-XXXXX" si la
+unión al dominio falla (ver sección DOMINIO más abajo), el número de
+serie es un identificador de hardware fijo — así siempre se puede
+encontrar el reporte de un equipo puntual sin depender de cómo se
+llamaba en ese momento. Si el equipo no reporta ningún número de serie
+(por ejemplo, corriendo fuera de Windows), se usa el valor de respaldo
+`SERIE_DESCONOCIDA` en el nombre del archivo en vez de dejarlo vacío o
+roto (`_sanitize_for_filename` en `app/report.py` también reemplaza
+cualquier caracter que Windows no acepte en un nombre de archivo —
+espacios, `/`, `\`, etc. — por `_`). El **nombre del equipo (hostname)
+sigue mostrándose sin cambios dentro del reporte**, en la tabla de datos
+del equipo — esto solo cambió el nombre del archivo, no su contenido.
 
 El encabezado incluye:
 

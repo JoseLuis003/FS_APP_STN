@@ -9,6 +9,7 @@ import datetime
 import html
 import os
 import platform
+import re
 import socket
 import subprocess
 import sys
@@ -103,6 +104,24 @@ def get_windows_version() -> str:
     return platform.platform() or "No disponible"
 
 
+# Cualquier caracter que no sea seguro para un nombre de archivo de
+# Windows (espacios, barras, dos puntos, etc.) -- pensado para sanear el
+# número de serie (viene de WMI, no lo controlamos nosotros) antes de
+# usarlo como parte del nombre del reporte, ver `_sanitize_for_filename`.
+_FILENAME_UNSAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _sanitize_for_filename(value: str) -> str:
+    """Reemplaza cualquier caracter no seguro para un nombre de archivo
+    (espacios, `/`, `\\`, `:`, etc.) por `_`. Si no queda nada usable
+    (por ejemplo, el equipo no reporta ningún número de serie y
+    `get_serial_number()` devuelve "No disponible" -- que además tiene un
+    espacio en el medio), devuelve un valor de respaldo en vez de armar un
+    nombre de archivo vacío o roto."""
+    cleaned = _FILENAME_UNSAFE_RE.sub("_", (value or "").strip())
+    return cleaned or "SERIE_DESCONOCIDA"
+
+
 FAILED_VERSION_LABEL = "FALLO"
 
 
@@ -126,7 +145,17 @@ def generate_report(
     `section_label` (opcional, ej. "LTP_CSS") identifica de qué pantalla
     viene el reporte cuando hay más de un catálogo en la app; se agrega al
     nombre del archivo y al título para no mezclarlos con los de APPS.
-    Devuelve (ruta_html, ruta_csv)."""
+
+    El nombre del archivo se identifica por el **número de serie** del
+    equipo (`get_serial_number()`, vía WMI -- `Win32_BIOS.SerialNumber`),
+    no por el nombre de equipo/hostname: a diferencia del hostname (que
+    puede cambiar, o quedar en un nombre genérico "DESKTOP-XXXXX" si la
+    unión al dominio falla, ver `app/domain_join.py`), el número de serie
+    es un identificador de hardware fijo, así que sirve para encontrar el
+    reporte de un equipo puntual sin depender de cómo se llamaba en ese
+    momento. El nombre del equipo (hostname) SÍ se sigue mostrando dentro
+    del reporte, en la tabla de datos del equipo -- esto solo cambia el
+    nombre del ARCHIVO. Devuelve (ruta_html, ruta_csv)."""
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.datetime.now()
@@ -137,7 +166,8 @@ def generate_report(
 
     stamp = timestamp.strftime("%Y%m%d_%H%M%S")
     label_part = f"{section_label}_" if section_label else ""
-    base_name = f"reporte_{label_part}{computer_name}_{stamp}"
+    serial_for_filename = _sanitize_for_filename(serial)
+    base_name = f"reporte_{label_part}{serial_for_filename}_{stamp}"
     html_path = REPORTS_DIR / f"{base_name}.html"
     csv_path = REPORTS_DIR / f"{base_name}.csv"
 

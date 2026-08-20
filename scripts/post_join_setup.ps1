@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string[]]$AdminGroups
+    [Parameter(Mandatory = $true)][string]$AdminGroups
 )
 
 # post_join_setup.ps1
@@ -11,19 +11,31 @@ param(
 # configurado) para que el equipo pida el logon de dominio normalmente.
 #
 # A diferencia del script original (DomainJoined.ps1), los nombres de grupo
-# que tienen espacios se reciben como elementos de un arreglo (-AdminGroups),
-# no como texto suelto sin comillas -- el script original tenia el bug de
-# pasar "COPAAIR\GRP-Soporte Copa Panama" sin comillas, lo que PowerShell
+# que tienen espacios se reciben con comillas, no como texto suelto sin
+# comillas -- el script original tenia el bug de pasar
+# "COPAAIR\GRP-Soporte Copa Panama" sin comillas, lo que PowerShell
 # interpreta como varios argumentos posicionales sueltos y falla al
 # invocarse.
+#
+# IMPORTANTE (bug real de campo corregido, ver tambien
+# app/domain_join.py/apply_post_join_setup): -AdminGroups recibe los
+# grupos como UN SOLO string separado por comas (ej.
+# "COPAAIR\GRP-A,COPAAIR\GRP-B"), NO como un arreglo [string[]] con varios
+# argumentos de linea de comandos sueltos -- eso fue justamente lo que se
+# probo primero y fallaba: al invocar un .ps1 con "-File", PowerShell solo
+# enlazaba el PRIMER grupo a -AdminGroups, y el segundo quedaba suelto
+# como si fuera un argumento posicional aparte (que este script no tiene),
+# haciendo fallar TODO el script con "A positional parameter cannot be
+# found..." antes de llegar siquiera a agregar el primer grupo.
 #
 # Imprime RESULT_OK si todo salio bien (agregar un grupo que ya era miembro
 # NO se trata como error), o RESULT_ERROR: <detalle> si algo fallo.
 
 $ErrorActionPreference = "Stop"
 $errors = @()
+$groupList = $AdminGroups -split "," | Where-Object { $_ }
 
-foreach ($group in $AdminGroups) {
+foreach ($group in $groupList) {
     try {
         Add-LocalGroupMember -Group "Administrators" -Member $group -ErrorAction Stop
     }

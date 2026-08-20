@@ -223,7 +223,7 @@ class DominioWindow(QMainWindow):
 
         username_row = QHBoxLayout()
         self.username_edit = QLineEdit()
-        self.username_edit.setPlaceholderText("usuario de dominio")
+        self.username_edit.setPlaceholderText("jlbarrios")
         username_row.addWidget(self.username_edit, 1)
         suffix_label = QLabel(USERNAME_DOMAIN_SUFFIX)
         suffix_label.setStyleSheet("color: #555555; font-weight: 600;")

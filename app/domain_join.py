@@ -82,9 +82,11 @@ OU_OPTIONS: list[tuple[str, str]] = [
 OU_SEARCH_BASE_DN = "OU=Workstations_Copa,DC=copaair,DC=com"
 
 # Grupos que se agregan al grupo local Administrators una vez unido al
-# dominio -- cada elemento se pasa como UN SOLO argumento (ver
-# `apply_post_join_setup`), a diferencia del script original que los pasaba
-# sin comillas y por eso fallaba.
+# dominio -- a diferencia del script original, que los pasaba sin comillas
+# y por eso fallaba. Ver `apply_post_join_setup` para CÓMO se pasan estos
+# valores a `post_join_setup.ps1` (bug real de campo corregido: no se
+# pasan como varios argumentos de línea de comandos sueltos después de
+# -AdminGroups).
 LOCAL_ADMIN_GROUPS: list[str] = [
     "COPAAIR\\GRP-Soporte Copa Panama",
     "COPAAIR\\GRP-Soporte Copa Estaciones",
@@ -183,9 +185,11 @@ def _interpret_name_check_result(result: subprocess.CompletedProcess, computer_n
     `NAME_EXISTS|<DN>` (normalmente a lo sumo una, el nombre es único en
     el dominio, pero se juntan todas por si acaso) y, al llegar a
     `RESULT_OK`, lanza `ComputerNameExistsError` si se encontró alguna --
-    con el DN encontrado y la explicación completa de la causa real (ver
-    `check_computer_name_available`). Si no se encontró ninguna, no hace
-    nada (el nombre está libre para usarse)."""
+    con el/los DN encontrados y las 3 opciones del técnico (pedido
+    explícito: sin la explicación larga de la causa real/KB5020276, que
+    queda solo en el docstring de `check_computer_name_available` para
+    quien lea el código, no en el mensaje que ve el técnico). Si no se
+    encontró ninguna, no hace nada (el nombre está libre para usarse)."""
     stdout = result.stdout or ""
     found_dns: list[str] = []
     for raw_line in stdout.splitlines():
@@ -196,12 +200,6 @@ def _interpret_name_check_result(result: subprocess.CompletedProcess, computer_n
             dn_list = "\n".join(f"  - {dn}" for dn in found_dns)
             raise ComputerNameExistsError(
                 f"El nombre '{computer_name}' ya existe en Active Directory:\n{dn_list}\n\n"
-                "Esto NO es un problema de este equipo ni de esta app: desde octubre de 2022, "
-                "Windows bloquea por seguridad la reutilización de una cuenta de equipo ya "
-                "existente (KB5020276, \"Netjoin: Domain join hardening changes\"), a menos que "
-                "quien haga la unión sea quien creó esa cuenta originalmente, sea Domain/Enterprise "
-                "Admin, o el dueño de esa cuenta tenga permitida la reutilización vía la directiva "
-                "\"Domain controller: Allow computer account reuse during domain join\".\n\n"
                 "Opciones:\n"
                 "  1. Pide al equipo de Active Directory que elimine ese objeto (si es de un equipo "
                 "anterior que ya no existe).\n"
@@ -367,7 +365,23 @@ def apply_post_join_setup() -> None:
     Administrators y limpia el autologon local. Se corre DESPUÉS de que
     `join_domain()` ya validó las credenciales y unió el equipo -- si este
     paso falla, el equipo de todos modos ya quedó unido al dominio, así que
-    la UI lo debe mostrar como advertencia y no como fallo total."""
-    args = ["-AdminGroups", *LOCAL_ADMIN_GROUPS]
+    la UI lo debe mostrar como advertencia y no como fallo total.
+
+    IMPORTANTE (bug real de campo corregido): antes, `LOCAL_ADMIN_GROUPS`
+    se pasaba como VARIOS argumentos de línea de comandos sueltos después
+    de `-AdminGroups` (`-AdminGroups "grupo 1" "grupo 2"`), asumiendo que
+    PowerShell los uniría en el arreglo `[string[]]$AdminGroups` de
+    `post_join_setup.ps1` -- pero al invocar un .ps1 con `-File`, ese
+    "enlace" de varios valores sueltos a un mismo parámetro de arreglo NO
+    es confiable: en la práctica, solo el PRIMER valor se enlazaba a
+    `-AdminGroups`, y el segundo quedaba suelto como si fuera un argumento
+    posicional aparte -- que el script no tiene, así que PowerShell
+    fallaba con "A positional parameter cannot be found that accepts
+    argument '<segundo grupo>'" y NINGÚN grupo llegaba a agregarse (el
+    script fallaba antes de entrar al `foreach`). Se corrige uniendo todos
+    los grupos en un ÚNICO argumento separado por comas -- así solo hay UN
+    valor después de `-AdminGroups`, sin depender de ese enlace de
+    arreglo, y `post_join_setup.ps1` lo separa internamente."""
+    args = ["-AdminGroups", ",".join(LOCAL_ADMIN_GROUPS)]
     result = _run_powershell_script("post_join_setup.ps1", args)
     _interpret_result(result, "No se pudo completar la configuración posterior a la unión al dominio")

@@ -1161,7 +1161,32 @@ locales, autologon, reinicio) como si nada.
      muestra como advertencia, no como fallo total.
 3. **Reinicio**: a diferencia del script original (que reiniciaba sin
    preguntar), acá siempre se le pregunta al técnico antes de reiniciar. Si
-   confirma, se ejecuta `shutdown /r /t 10` (10 segundos de margen).
+   confirma, ANTES de reiniciar de verdad se corren NetFX35 y el
+   prerequisito de DELL Command Update (ver "Aprovechar el reinicio..."
+   más abajo), y recién después se ejecuta `shutdown /r /t 10` (10
+   segundos de margen). Si responde que no, no se instala nada extra ni
+   se reinicia — el equipo queda unido al dominio, listo para que el
+   técnico reinicie por su cuenta cuando quiera.
+
+**Aprovechar el reinicio para NetFX35 y el prerequisito de DELL Command
+Update (`PostJoinExtraInstallsWorker`):** pedido explícito. NetFX35 y el
+.NET Desktop Runtime (el paso `dotnet_desktop_runtime_setup`, prerequisito
+de "DELL Command Update" en APPS) suelen necesitar que el equipo reinicie
+para terminar de activarse (ver la sección de NetFX35/BFirst más arriba).
+Como la unión al dominio YA implica un reinicio, si el técnico acepta
+reiniciar acá se aprovecha ESE MISMO reinicio para dejar esos 2 también
+resueltos, en vez de que el técnico tenga que reiniciar una segunda vez
+más tarde al marcarlos desde APPS.
+
+Corre los 2 pasos SIEMPRE, aunque el primero falle (son independientes
+entre sí), y el resultado NUNCA bloquea el reinicio: si alguno falla
+(por ejemplo, por un reinicio pendiente previo sin relación con esto), se
+le avisa al técnico con un mensaje aparte ("NetFX35 / .NET Desktop
+Runtime: con advertencias") indicando que puede reintentarlo después
+desde APPS, pero el equipo se reinicia igual — ya hace falta para
+completar la unión al dominio, sin importar qué haya pasado con estos 2
+pasos extra. Si el técnico responde que NO quiere reiniciar ahora, no se
+corre nada de esto — quedan pendientes para hacerse normal desde APPS.
 
 **Validación previa del nombre del equipo (`check_computer_name_available`,
 `scripts/check_computer_name.ps1`):** agregada tras un bug real reportado

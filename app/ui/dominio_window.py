@@ -13,6 +13,18 @@ completo de qué se corrigió):
   pasos siguientes.
 - Una vez unido el equipo (y aplicados los grupos locales / autologon), se
   le PREGUNTA al técnico antes de reiniciar -- no se reinicia solo.
+- Pedido explícito: si el técnico acepta reiniciar, ANTES de reiniciar de
+  verdad se corren NetFX35 (`netfx35_setup`) y el prerequisito de DELL
+  Command Update (`dotnet_desktop_runtime_setup`) -- ver
+  `PostJoinExtraInstallsWorker` más abajo. La idea es aprovechar que el
+  equipo YA se va a reiniciar para terminar la unión al dominio: esos 2
+  componentes suelen necesitar un reinicio para activarse del todo (ver
+  `_is_reboot_pending()` en app/netfx35_setup.py), así que instalarlos
+  justo antes evita un SEGUNDO reinicio aparte más tarde, cuando el
+  técnico los marque desde APPS. Si el técnico responde que NO quiere
+  reiniciar ahora, no se instala nada acá -- quedan pendientes para
+  hacerse normal desde APPS, junto con el reinicio que decida hacer el
+  técnico por su cuenta.
 
 El técnico solo escribe su usuario (ej. "jperez"); el sufijo de dominio
 "@copaair.com" (formato UPN, ver `app/domain_join.py` para el motivo del
@@ -45,6 +57,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.config import load_settings
 from app.domain_join import (
     OU_OPTIONS,
     USERNAME_DOMAIN_SUFFIX,
@@ -55,6 +68,9 @@ from app.domain_join import (
     fetch_ou_list_from_ad,
     join_domain,
 )
+from app.dotnet_desktop_runtime_setup import ensure_dotnet_desktop_runtime_installed
+from app.installer import InstallLogger
+from app.netfx35_setup import ensure_netfx35_installed
 
 _DEFAULT_WIDTH = 480
 _DEFAULT_HEIGHT = 440
@@ -162,6 +178,55 @@ class FetchOuListWorker(QThread):
         self.succeeded.emit(ou_options)
 
 
+class PostJoinExtraInstallsWorker(QThread):
+    """Corre, en un hilo aparte (para no congelar la interfaz), NetFX35
+    (`ensure_netfx35_installed`) y el prerequisito de DELL Command Update
+    (`ensure_dotnet_desktop_runtime_installed`) -- pedido explícito: se
+    llama SOLO cuando el técnico acepta reiniciar después de unirse al
+    dominio, para aprovechar ese reinicio (que igual hace falta para
+    completar la unión) y dejar estos 2 componentes también resueltos,
+    en vez de necesitar un reinicio aparte más tarde desde APPS.
+
+    Corre los 2 SIEMPRE, aunque el primero falle (son independientes
+    entre sí -- ver `finished_all`, que junta el resultado de ambos) --
+    y el resultado de este worker NUNCA impide el reinicio: si alguno
+    falla, `DominioWindow` igual reinicia el equipo (que de todos modos
+    hace falta para la unión al dominio) y solo le avisa al técnico que
+    puede volver a intentarlo desde APPS."""
+
+    finished_all = Signal(list)  # [(label, success, detalle_o_error), ...]
+
+    def __init__(self, installers_base_path: str, logger: InstallLogger, parent=None):
+        super().__init__(parent)
+        self.installers_base_path = installers_base_path
+        self.logger = logger
+
+    def run(self) -> None:
+        # Se arma la lista de pasos ACÁ ADENTRO (no como atributo de clase)
+        # a propósito: así toma el valor ACTUAL de
+        # `ensure_netfx35_installed`/`ensure_dotnet_desktop_runtime_installed`
+        # en el momento de correr, en vez de "congelar" una referencia fija
+        # al importarse el módulo -- mismo criterio que
+        # `_python_step_handlers()` en app/installer.py, y necesario para
+        # que las pruebas puedan mockear estas 2 funciones.
+        steps = (
+            ("NetFX35", ensure_netfx35_installed),
+            (".NET Desktop Runtime (prerequisito de DELL Command Update)", ensure_dotnet_desktop_runtime_installed),
+        )
+        results: list[tuple[str, bool, str]] = []
+        for label, handler in steps:
+            self.logger.write(f"{label}: iniciando (post unión al dominio, antes de reiniciar)")
+            try:
+                detail = handler(self.installers_base_path)
+            except Exception as exc:  # mismo criterio que _python_step_handlers en app/installer.py
+                self.logger.write(f"{label}: ERROR - {exc}")
+                results.append((label, False, str(exc)))
+                continue
+            self.logger.write(f"{label}: OK ({detail})")
+            results.append((label, True, detail))
+        self.finished_all.emit(results)
+
+
 class DominioWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
@@ -179,6 +244,11 @@ class DominioWindow(QMainWindow):
         self._current_name = socket.gethostname()
         self._worker: DomainJoinWorker | None = None
         self._ou_worker: FetchOuListWorker | None = None
+        self._extra_installs_worker: PostJoinExtraInstallsWorker | None = None
+        # Solo para leer `installers_base_path` (ver
+        # `_run_post_join_extra_installs`) -- esta pantalla no tiene un
+        # botón de Ajustes propio, así que se lee tal cual está guardado.
+        self.settings = load_settings()
 
         self._build_ui()
 
@@ -432,7 +502,46 @@ class DominioWindow(QMainWindow):
             QMessageBox.Yes,
         )
         if respuesta == QMessageBox.Yes:
-            self._restart_computer()
+            # Antes de reiniciar de verdad, se aprovecha para dejar
+            # instalados NetFX35 y el prerequisito de DELL Command Update
+            # (ver `PostJoinExtraInstallsWorker`) -- si el técnico hubiera
+            # dicho que NO, no se instala nada acá, queda pendiente para
+            # hacerse normal desde APPS.
+            self._run_post_join_extra_installs()
+
+    def _run_post_join_extra_installs(self) -> None:
+        self._set_controls_enabled(False)
+        self.status_label.setText(
+            "Aprovechando el reinicio: instalando NetFX35 y el .NET Desktop Runtime "
+            "(prerequisito de DELL Command Update)..."
+        )
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
+
+        logger = InstallLogger()
+        self._extra_installs_worker = PostJoinExtraInstallsWorker(self.settings.installers_base_path, logger, self)
+        self._extra_installs_worker.finished_all.connect(self._on_post_join_extra_installs_finished)
+        self._extra_installs_worker.start()
+
+    def _on_post_join_extra_installs_finished(self, results: list) -> None:
+        """`results` es `[(label, success, detalle_o_error), ...]` (ver
+        `PostJoinExtraInstallsWorker.finished_all`). Sin importar el
+        resultado, el equipo se reinicia igual -- ya hace falta para
+        completar la unión al dominio; si algo falló acá, solo se le
+        avisa al técnico para que lo reintente después desde APPS."""
+        self._finish_attempt()
+        failed = [(label, detail) for label, success, detail in results if not success]
+        if failed:
+            detail_lines = "\n".join(f"- {label}: {detail}" for label, detail in failed)
+            QMessageBox.warning(
+                self,
+                "NetFX35 / .NET Desktop Runtime: con advertencias",
+                "El equipo se va a reiniciar igual para completar la unión al dominio, pero "
+                "no se pudo dejar todo listo antes del reinicio:\n\n"
+                f"{detail_lines}\n\n"
+                "Puedes volver a intentarlo manualmente desde APPS después de reiniciar.",
+            )
+        self._restart_computer()
 
     def _restart_computer(self) -> None:
         try:

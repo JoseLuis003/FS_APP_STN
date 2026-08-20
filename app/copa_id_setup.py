@@ -28,9 +28,9 @@ placeholder "NO SETUP" en vez de prellenarlo con un valor que de todos
 modos no pasaría la validación."""
 from __future__ import annotations
 
-import ntpath
 import re
 import subprocess
+from pathlib import Path
 
 from app.report import get_asset_tag
 
@@ -84,18 +84,38 @@ def apply_copa_id_asset_tag(asset_tag: str, installers_base_path: str) -> str:
 
     Lanza `CopaIdSetupError` si `asset_tag` no son exactamente 6 dígitos
     (no debería pasar -- la UI ya lo valida antes de llegar acá, pero se
-    revisa igual para no confiar ciegamente en el llamador), si
-    `cctk.exe` no se pudo ejecutar (por ejemplo, no vino junto a los
-    demás instaladores), o si terminó con un código de salida distinto
-    de 0."""
+    revisa igual para no confiar ciegamente en el llamador), si no se
+    encuentra `cctk.exe` en la ruta esperada (por ejemplo, la carpeta
+    `Copa_ID` no vino copiada junto con los demás instaladores -- bug
+    real reportado en campo: sin este chequeo, `subprocess.run` fallaba
+    con el mensaje crudo de Windows `[WinError 2] The system cannot find
+    the file specified`, que no le dice al técnico QUÉ archivo falta ni
+    DÓNDE se esperaba encontrarlo, a diferencia del resto del catálogo
+    -- ver `_resolve_installer_path`/`installer_path.exists()` en
+    `app/installer.py`, que sí arma un mensaje claro con la ruta
+    completa), o si `cctk.exe` no se pudo ejecutar por otro motivo, o si
+    terminó con un código de salida distinto de 0."""
     asset_tag = (asset_tag or "").strip()
     if not is_valid_asset_tag(asset_tag):
         raise CopaIdSetupError(
             f"El Asset Tag '{asset_tag}' no es válido -- debe ser exactamente 6 dígitos numéricos."
         )
 
-    cctk_path = ntpath.join(installers_base_path, *_CCTK_RELATIVE_PARTS)
-    command = [cctk_path, f"--asset={asset_tag}"]
+    # `Path(...).joinpath(...)` (no `ntpath.join`/concatenación de string):
+    # así `.exists()` funciona con las reglas de ruta del sistema operativo
+    # que de verdad está corriendo la app (mismo criterio que
+    # `_resolve_installer_path` en app/installer.py) -- en producción
+    # (Windows) es idéntico a antes, pero además es comprobable en Linux
+    # (donde corren las pruebas automáticas de este proyecto).
+    cctk_path = Path(installers_base_path).joinpath(*_CCTK_RELATIVE_PARTS)
+    if not cctk_path.exists():
+        raise CopaIdSetupError(
+            f"No se encontró 'cctk.exe' en: {cctk_path} -- confirma que la carpeta "
+            "'Copa_ID' con el ejecutable de Dell Command | Configure esté copiada "
+            "junto con los demás instaladores."
+        )
+
+    command = [str(cctk_path), f"--asset={asset_tag}"]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:

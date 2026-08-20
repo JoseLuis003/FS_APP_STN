@@ -56,8 +56,11 @@ DOMINIO").
 - **MTO**: selecciona el catálogo de mantenimiento (ISOView, Cortana,
   Toolbox Print, ShortCut-MTO — ver `MTO_PRESET_IDS`).
 - **AJUSTES**: configura la carpeta base de instaladores (con selector de
-  carpeta) y da acceso a "Editar versiones de las aplicaciones..." y
-  "Agregar aplicación..." (ver secciones abajo).
+  carpeta, sin PIN) y da acceso a "Editar versiones de las
+  aplicaciones..." y "Agregar aplicación..." (ver secciones abajo) —
+  estos 2 botones sí piden un PIN (`SETTINGS_CATALOG_PIN`, ver
+  `app/ui/main_window.py`) antes de abrir el diálogo correspondiente,
+  porque son los únicos 2 que modifican el catálogo.
 - **ATRAS**: regresa a la portada (FS APP PORTABLE). Reutiliza la misma
   ventana de instalación si se vuelve a entrar por APPS (no recarga el
   catálogo desde cero).
@@ -542,8 +545,11 @@ funcione, así que los 4 son fail-loud.
 
 ## Editar, actualizar o eliminar una aplicación del catálogo (sin tocar JSON a mano)
 
-AJUSTES → "Editar versiones de las aplicaciones..." abre una tabla con
-todas las apps del catálogo, con tres formas de modificarlas:
+AJUSTES → "Editar versiones de las aplicaciones..." pide el PIN
+(`SETTINGS_CATALOG_PIN`, ver `app/ui/main_window.py`) antes de abrir la
+tabla -- si el PIN es incorrecto o se cancela el diálogo, no se abre
+nada. Una vez dentro, es una tabla con todas las apps del catálogo, con
+tres formas de modificarlas:
 
 - **Versión**: escribe la versión nueva en esa columna y presiona Guardar
   (se guarda como "N/D" si queda vacía). Solo toca el campo `version`, no
@@ -564,8 +570,10 @@ reflejan en la lista principal en cuanto se cierra AJUSTES.
 
 ## Agregar una aplicación nueva al catálogo (sin editar JSON a mano)
 
-AJUSTES → "Agregar aplicación..." permite que cualquier compañero de soporte
-sume al catálogo una aplicación que todavía no está en la lista:
+AJUSTES → "Agregar aplicación..." también pide el PIN
+(`SETTINGS_CATALOG_PIN`) antes de abrir el diálogo. Una vez dentro,
+permite que cualquier compañero de soporte sume al catálogo una
+aplicación que todavía no está en la lista:
 
 1. Escribe el nombre a mostrar y selecciona el archivo instalador
    (`.exe`, `.msi`, `.ps1` o `.bat`) con "Examinar...". El tipo de instalador

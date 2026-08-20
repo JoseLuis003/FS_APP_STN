@@ -501,6 +501,14 @@ class AddAppDialog(QDialog):
         self.accept()
 
 
+# PIN que protege "Editar versiones de las aplicaciones..." y "Agregar
+# aplicación..." dentro de Ajustes (pedido explícito): son los únicos 2
+# botones que modifican el catálogo (config/apps.json o
+# config/ltp_css_apps.json) -- el resto de Ajustes (carpeta base de
+# instaladores) queda sin PIN, cualquier técnico lo puede tocar.
+SETTINGS_CATALOG_PIN = "0303"
+
+
 class SettingsDialog(QDialog):
     """Diálogo 'AJUSTES': ruta base de instaladores, modo de ejecución, etc.
 
@@ -574,7 +582,29 @@ class SettingsDialog(QDialog):
 
         self._update_path_status()
 
+    def _check_catalog_pin(self) -> bool:
+        """Pide el PIN (`SETTINGS_CATALOG_PIN`) antes de abrir "Editar
+        versiones..." o "Agregar aplicación..." -- los 2 únicos botones de
+        Ajustes que modifican el catálogo. Devuelve `True` solo si el PIN
+        ingresado es correcto; si el técnico cancela el diálogo o lo
+        escribe mal, devuelve `False` (y avisa con un mensaje en el
+        segundo caso) sin abrir nada."""
+        pin, ok = QInputDialog.getText(
+            self,
+            "PIN requerido",
+            "Ingresa el PIN para continuar:",
+            echo=QLineEdit.Password,
+        )
+        if not ok:
+            return False
+        if pin != SETTINGS_CATALOG_PIN:
+            QMessageBox.warning(self, "PIN incorrecto", "El PIN ingresado no es correcto.")
+            return False
+        return True
+
     def _on_edit_versions(self) -> None:
+        if not self._check_catalog_pin():
+            return
         base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
         dialog = CatalogEditorDialog(self.items, base_path, apps_file=self.apps_file, parent=self)
         dialog.exec()
@@ -582,6 +612,8 @@ class SettingsDialog(QDialog):
             self.catalog_changed = True
 
     def _on_add_app(self) -> None:
+        if not self._check_catalog_pin():
+            return
         base_path = self.base_path_edit.text().strip() or self.settings.installers_base_path
         existing_ids = {item.id for item in self.items}
         dialog = AddAppDialog(base_path, self.column_count, existing_ids, apps_file=self.apps_file, parent=self)

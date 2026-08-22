@@ -1154,8 +1154,9 @@ locales, autologon, reinicio) como si nada.
    - **Cualquier otro error** (OU inválida, sin red, nombre de equipo
      duplicado, etc.): se muestra el detalle y no se continúa con los pasos
      siguientes.
-   - **Éxito**: se agregan los grupos de soporte (`COPAAIR\GRP-Soporte Copa
-     Panama` y `COPAAIR\GRP-Soporte Copa Estaciones`) al grupo local
+   - **Éxito**: se agregan los grupos de soporte (`LOCAL_ADMIN_GROUPS` en
+     `app/domain_join.py`: `COPAAIR\GRP-Soporte Copa Panama`,
+     `COPAAIR\GRP-SoportePTY-EST` y `COPAAIR\GRP-WebDesk`) al grupo local
      Administrators y se limpia el autologon local. Si este paso posterior
      falla, el equipo de todos modos YA quedó unido al dominio, así que se
      muestra como advertencia, no como fallo total.

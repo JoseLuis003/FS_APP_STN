@@ -89,7 +89,8 @@ OU_SEARCH_BASE_DN = "OU=Workstations_Copa,DC=copaair,DC=com"
 # -AdminGroups).
 LOCAL_ADMIN_GROUPS: list[str] = [
     "COPAAIR\\GRP-Soporte Copa Panama",
-    "COPAAIR\\GRP-Soporte Copa Estaciones",
+    "COPAAIR\\GRP-SoportePTY-EST",
+    "COPAAIR\\GRP-WebDesk",
 ]
 
 _POWERSHELL_TIMEOUT_SECONDS = 120

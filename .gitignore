@@ -16,3 +16,8 @@ reports/*.csv
 # chocar con cambios locales aqui. config/settings.example.json queda
 # como plantilla de referencia versionada.
 config/settings.json
+
+# Carpeta de trabajo usada por el asistente para mover archivos de
+# lock (.lock) de git que quedan sueltos tras operaciones remotas;
+# nunca debe versionarse.
+_to_delete/

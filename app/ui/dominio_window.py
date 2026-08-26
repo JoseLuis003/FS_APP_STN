@@ -64,7 +64,6 @@ from app.domain_join import (
     BadCredentialsError,
     ComputerNameExistsError,
     DomainJoinError,
-    apply_computer_description,
     apply_post_join_setup,
     fetch_ou_list_from_ad,
     join_domain,
@@ -89,10 +88,10 @@ def _initial_window_size() -> tuple[int, int]:
 
 
 class DomainJoinWorker(QThread):
-    """Corre `join_domain()` y, si tiene éxito, `apply_computer_description()`
-    y `apply_post_join_setup()` en un hilo aparte para no congelar la
-    interfaz. Una señal distinta por cada tipo de resultado, para que la UI
-    reaccione distinto en cada caso (ver `DominioWindow`)."""
+    """Corre `join_domain()` y, si tiene éxito, `apply_post_join_setup()` en
+    un hilo aparte para no congelar la interfaz. Una señal distinta por cada
+    tipo de resultado, para que la UI reaccione distinto en cada caso (ver
+    `DominioWindow`)."""
 
     credentials_rejected = Signal(str)
     name_conflict = Signal(str)
@@ -117,58 +116,33 @@ class DomainJoinWorker(QThread):
         self.password = password
 
     def run(self) -> None:
-        description_warning: str | None = None
         try:
-            try:
-                target_name = join_domain(
-                    self.current_name, self.new_name, self.ou_dn, self.username, self.password
-                )
-            except BadCredentialsError as exc:
-                self.credentials_rejected.emit(str(exc))
-                return
-            except ComputerNameExistsError as exc:
-                # Se distingue de un DomainJoinError genérico (ver
-                # `_on_name_conflict`): acá el equipo NUNCA llegó a intentar
-                # Add-Computer (el nombre se valida ANTES, ver
-                # `check_computer_name_available` en app/domain_join.py), así
-                # que el técnico necesita un mensaje distinto -- no es "algo
-                # falló al unirse", es "ese nombre ya existe en AD, decide qué
-                # hacer antes de reintentar".
-                self.name_conflict.emit(str(exc))
-                return
-            except DomainJoinError as exc:
-                self.failed.emit(str(exc))
-                return
-
-            # Pedido explícito: dejar el número de serie del equipo en el
-            # campo Description de Active Directory. Se corre ACÁ (todavía
-            # con `target_name` recién unido y las credenciales en
-            # memoria), no en `apply_post_join_setup()`, porque a
-            # diferencia de ese paso, este SÍ necesita las credenciales de
-            # dominio (hace su propio bind LDAP). Un fallo acá no es
-            # bloqueante: el equipo ya quedó unido al dominio de todos
-            # modos, así que solo se junta como advertencia (ver más abajo).
-            try:
-                apply_computer_description(target_name, self.ou_dn, self.username, self.password)
-            except DomainJoinError as exc:
-                description_warning = str(exc)
+            join_domain(self.current_name, self.new_name, self.ou_dn, self.username, self.password)
+        except BadCredentialsError as exc:
+            self.credentials_rejected.emit(str(exc))
+            return
+        except ComputerNameExistsError as exc:
+            # Se distingue de un DomainJoinError genérico (ver
+            # `_on_name_conflict`): acá el equipo NUNCA llegó a intentar
+            # Add-Computer (el nombre se valida ANTES, ver
+            # `check_computer_name_available` en app/domain_join.py), así
+            # que el técnico necesita un mensaje distinto -- no es "algo
+            # falló al unirse", es "ese nombre ya existe en AD, decide qué
+            # hacer antes de reintentar".
+            self.name_conflict.emit(str(exc))
+            return
+        except DomainJoinError as exc:
+            self.failed.emit(str(exc))
+            return
         finally:
             # La contraseña ya no hace falta en memoria una vez que
-            # terminaron (con éxito o no) los 2 pasos que la necesitan:
-            # unirse al dominio y escribir la Description.
-            # `apply_post_join_setup()`, más abajo, no requiere
-            # credenciales de dominio.
+            # terminó (con éxito o no) el intento de unión.
             self.password = ""
 
         try:
             apply_post_join_setup()
         except DomainJoinError as exc:
-            warnings = [w for w in (description_warning, str(exc)) if w]
-            self.post_setup_warning.emit("\n\n".join(warnings))
-            return
-
-        if description_warning:
-            self.post_setup_warning.emit(description_warning)
+            self.post_setup_warning.emit(str(exc))
             return
 
         self.succeeded.emit()

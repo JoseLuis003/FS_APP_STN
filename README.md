@@ -1206,16 +1206,12 @@ locales, autologon, reinicio) como si nada.
    - **Cualquier otro error** (OU inválida, sin red, nombre de equipo
      duplicado, etc.): se muestra el detalle y no se continúa con los pasos
      siguientes.
-   - **Éxito**: se escribe el número de serie del equipo en el campo
-     Description del objeto de equipo en Active Directory (ver "Serie del
-     equipo en el campo Description de AD" más abajo), y se agregan los
-     grupos de soporte (`LOCAL_ADMIN_GROUPS` en `app/domain_join.py`:
-     `COPAAIR\GRP-Soporte Copa Panama`, `COPAAIR\GRP-SoportePTY-EST` y
-     `COPAAIR\GRP-WebDesk`) al grupo local Administrators, y se limpia el
-     autologon local. Si alguno de estos 2 pasos posteriores falla, el
-     equipo de todos modos YA quedó unido al dominio, así que se muestra
-     como advertencia (con el detalle de ambos si los dos fallan), no
-     como fallo total.
+   - **Éxito**: se agregan los grupos de soporte (`LOCAL_ADMIN_GROUPS` en
+     `app/domain_join.py`: `COPAAIR\GRP-Soporte Copa Panama`,
+     `COPAAIR\GRP-SoportePTY-EST` y `COPAAIR\GRP-WebDesk`) al grupo local
+     Administrators y se limpia el autologon local. Si este paso posterior
+     falla, el equipo de todos modos YA quedó unido al dominio, así que se
+     muestra como advertencia, no como fallo total.
 3. **Reinicio**: a diferencia del script original (que reiniciaba sin
    preguntar), acá siempre se le pregunta al técnico antes de reiniciar. Si
    confirma, ANTES de reiniciar de verdad se corren NetFX35 y el
@@ -1286,39 +1282,6 @@ ni resetea el objeto encontrado por su cuenta — sería una operación
 destructiva sobre AD sin intervención humana, así que se deja en manos del
 técnico/equipo de AD decidir qué hacer.
 
-**Serie del equipo en el campo Description de AD (`apply_computer_description`,
-`scripts/set_computer_description.ps1`):** pedido explícito, para que el
-equipo de soporte pueda ver el número de serie directo en Active Directory
-Users and Computers sin tener que abrir el equipo físicamente — el campo
-Description queda con EXACTAMENTE el número de serie (mismo valor que
-`get_serial_number()`, ya usado en el reporte y en Copa ID / Asset Tag),
-sin ningún prefijo ni texto agregado.
-
-Se corre justo después de que `join_domain()` crea el objeto de equipo
-(con el `target_name` final, ya renombrado si correspondía) y ANTES de
-`apply_post_join_setup()` — a diferencia de ese paso, este SÍ necesita las
-credenciales de dominio del técnico, así que corre mientras la contraseña
-todavía está en memoria (recién se limpia después de este paso).
-
-`Add-Computer` no tiene un parámetro `-Description`, y `Set-ADComputer`
-(el cmdlet obvio) requiere el módulo RSAT de Active Directory, que
-normalmente NO está instalado en un equipo recién provisionado — mismo
-motivo por el que `list_ous.ps1` / `check_computer_name.ps1` usan ADSI en
-vez de ese módulo. `set_computer_description.ps1` hace lo mismo: se
-conecta directo (por `System.DirectoryServices.DirectoryEntry`) al DN del
-objeto de equipo recién creado (`CN=<nombre final>,<DN de la OU
-elegida>`) y le pone el valor en el atributo `description`.
-
-Riesgo conocido, sin resolver a propósito en esta primera versión: en un
-dominio con más de un controlador, el controlador contra el que este
-script termine conectándose podría no haber recibido todavía la
-replicación del objeto de equipo recién creado por `Add-Computer`, y el
-bind fallaría con "no se encontró el objeto" aunque el equipo sí quedó
-unido al dominio correctamente. No se agregó lógica de reintento para no
-complicar el script — si pasa, queda como advertencia no bloqueante
-(igual que un fallo en `apply_post_join_setup`) y el campo Description se
-puede completar manualmente después.
-
 **Botón "Cargar OUs desde AD" (`fetch_ou_list_from_ad`, `scripts/list_ous.ps1`):**
 las 5 OUs de `OU_OPTIONS` son una lista fija, portada tal cual del script
 original — si el AD de Copa agrega, renombra o reorganiza OUs bajo
@@ -1386,9 +1349,6 @@ extraen a una carpeta temporal en tiempo de ejecución, igual que `assets/`.
   arriba) — para el bug real de "the account already exists".
 - `join_domain.ps1`: hace el `Add-Computer` (con `-NewName` si corresponde,
   para renombrar en el mismo paso).
-- `set_computer_description.ps1`: escribe el número de serie del equipo en
-  el campo Description del objeto de equipo recién creado (ver "Serie del
-  equipo en el campo Description de AD" más arriba).
 - `post_join_setup.ps1`: agrega los grupos de soporte a Administrators
   (cada nombre de grupo se pasa como un solo argumento — el script original
   tenía un bug acá: `COPAAIR\GRP-Soporte Copa Panama` sin comillas se

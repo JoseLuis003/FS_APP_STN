@@ -9,7 +9,7 @@
               "extra_steps": [ { "installer": "bginfo_registration", "silent_args": "", "installer_type": "python" } ] },
             { "id": "dell_command",      "label": "DELL Command Update",       "installer": "dotnet_desktop_runtime_setup", "silent_args": "", "installer_type": "python", "default_checked": false, "enabled": true, "version": "5.7.1",
               "extra_steps": [
-                { "installer": "DellCommandUpdate/Dell-Command-Update-Windows-Universal-Application_P0P70_WIN64_5.7.1_A00.EXE", "silent_args": "/s", "installer_type": "exe" }
+                { "installer": "DellCommandUpdate/Dell-Command-Update-Windows-Universal-Application_P0P70_WIN64_5.7.1_A00.EXE", "silent_args": "", "installer_type": "exe" }
               ] },
             { "id": "dell_optimizer",    "label": "DELL Optimizer",            "installer": "DellOptimizer/Dell-Optimizer-Application_5N4CV_WIN64_6.3.4.0_A00.EXE", "silent_args": "/s", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "6.3.4.0" },
             { "id": "dell_ownertag",     "label": "DELL OwnerTag",             "installer": "Dell_Owner_Tag/DELL_Owner_Tag_x64.exe", "silent_args": "/s",              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
@@ -34,12 +34,15 @@
             { "id": "background",       "label": "BackGround",                "installer": "branding_setup",               "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "ajustes_necesarios","label": "AJUSTES NECESARIOS",        "installer": "workstation_settings",         "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "registro_ad",      "label": "REGISTRO EN AD",            "installer": "Scripts/WindowsTH-KB2693643-x64.msu", "silent_args": "/quiet /norestart",         "installer_type": "msu", "default_checked": false, "enabled": true, "version": "N/D",
-              "extra_steps": [ { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" } ] },
+              "extra_steps": [
+                { "installer": "rsat_ad_tools_setup", "silent_args": "", "installer_type": "python" },
+                { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" }
+              ] },
             { "id": "rsat_ad_tools",    "label": "RSAT (Herramientas de Active Directory)", "installer": "rsat_ad_tools_setup", "silent_args": "",              "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "stn_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "microsoft_office_365", "label": "Microsoft Office 365",  "installer": "",                             "silent_args": "",                                "installer_type": "exe",    "default_checked": false, "enabled": false, "version": "N/D" }
+            { "id": "microsoft_office_365", "label": "Microsoft Office 365",  "installer": "ODT/setup.exe",                "silent_args": "/configure configuration.xml",    "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "16.0.20326.20112" }
           ]
         },
         {

@@ -335,6 +335,58 @@ en `app/report.py` detecta el mensaje por contener las palabras
 "reinicio" y "pendiente", así que este caso y el de SAP GUI se
 distinguen igual en el reporte con el mismo mecanismo).
 
+### RSAT: Herramientas de Active Directory (`app/rsat_setup.py`)
+
+Ítem independiente del catálogo (2da columna, junto a "REGISTRO EN AD"),
+`installer_type: "python"`, `installer: "rsat_ad_tools_setup"` →
+`ensure_rsat_ad_tools_installed()`. Instala "RSAT: Active Directory
+Domain Services and Lightweight Directory Services Tools" (el snap-in
+"Active Directory Users and Computers" — `dsa.msc` — y el módulo de
+PowerShell `ActiveDirectory`) vía `dism.exe /Online /Add-Capability`, con
+el mismo criterio que NetFX35 y DELL Command Update: nunca descarga nada
+de Windows Update (`/LimitAccess`), porque muchas estaciones de Copa no
+tienen salida a internet — usa como fuente los `.cab` locales en
+`<installers_base_path>\RSAT-ActiveDirectory-Offline\`.
+
+Es un ítem aparte, no algo de lo que dependa la pantalla DOMINIO — esa
+pantalla ya funciona sin RSAT a propósito (usa ADSI directo, ver
+"Pantalla DOMINIO" más abajo) porque RSAT normalmente no viene instalado
+de fábrica en un equipo recién provisionado. Este ítem existe para dejar
+esas herramientas disponibles en el equipo por si el técnico las
+necesita más adelante para administración de AD en general.
+
+**Pedido explícito: la ruta de origen nunca queda fija a `C:\`.** Se
+arma en tiempo de ejecución a partir de `installers_base_path` (la misma
+ruta que ya resuelve dinámicamente `app/config.py` según desde dónde se
+abrió `FS_APP_STN.exe` — el disco `C:` o una unidad extraíble/USB con
+otra letra), igual que hace `netfx35_setup.py` para ubicar
+`NetFX35\sources\sxs`. `test_rsat_setup.py` prueba esto explícitamente
+con 2 letras de unidad distintas (`C:` y `D:`) para confirmar que el
+comando de DISM nunca queda "pegado" a una sola.
+
+**Qué colocar en `RSAT-ActiveDirectory-Offline\`:** NO la carpeta
+completa del ISO oficial de Microsoft "Languages and Optional Features"
+(~5 GB, con archivos de cientos de características en decenas de
+idiomas) — el paquete de esta capability puntual (nombre interno
+`Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0`) pesa unos pocos MB.
+Alcanza con copiar de esa ISO extraída:
+
+- `Microsoft-Windows-ActiveDirectory-DS-LDS-Tools-FoD-Package~31bf3856ad364e35~amd64~~.cab`
+  (paquete base, ~4.3 MB) y su equivalente `~wow64~~.cab` (~580 KB) —
+  ambos obligatorios, sin idioma.
+- El par `~amd64~<idioma>~.cab` / `~wow64~<idioma>~.cab` (~800 KB + ~100
+  KB) que coincida con el idioma de Windows de los equipos de Copa (ej.
+  `en-US`, `es-ES`, `es-MX`) — sin el idioma correcto, DISM falla con
+  "el origen no se encontró" aunque el paquete base sí esté.
+
+Mismo chequeo de "reinicio pendiente" que `netfx35_setup.py`
+(`_is_reboot_pending()`, duplicado en este módulo): DISM usa el mismo
+almacén de componentes (CBS) tanto para `/Enable-Feature` como para
+`/Add-Capability`, así que corre el mismo riesgo de quedarse colgado
+hasta agotar el timeout si el equipo quedó en reinicio pendiente — se
+revisa ANTES de llamar a DISM para fallar rápido con un mensaje claro en
+vez de colgarse.
+
 ### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
 
 El ítem `dell_command` tiene 2 pasos, en este orden:

@@ -18,6 +18,7 @@ from app.branding_setup import apply_bginfo_registration, apply_branding_setup
 from app.config import AppItem, LOGS_DIR
 from app.dotnet_desktop_runtime_setup import ensure_dotnet_desktop_runtime_installed
 from app.netfx35_setup import ensure_netfx35_installed
+from app.rsat_setup import ensure_rsat_ad_tools_installed
 from app.sap_gui_setup import apply_sap_gui_setup
 from app.shares_setup import run_ltp_shares_post_install
 from app.shortcuts import (
@@ -102,6 +103,7 @@ def _python_step_handlers() -> dict:
         "vpn_setup": apply_vpn_setup,
         "netfx35_setup": ensure_netfx35_installed,
         "dotnet_desktop_runtime_setup": ensure_dotnet_desktop_runtime_installed,
+        "rsat_ad_tools_setup": ensure_rsat_ad_tools_installed,
     }
 
 

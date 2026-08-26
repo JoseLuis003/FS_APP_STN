@@ -116,6 +116,49 @@ def _wire_exclusive_group(members: list[QCheckBox]) -> None:
         cb.toggled.connect(make_handler(cb))
 
 
+def wire_linked_groups(checkboxes: dict[str, tuple[AppItem, QCheckBox]]) -> None:
+    """Enlaza los ítems que comparten un mismo `linked_group` (no vacío)
+    para que se marquen y desmarquen siempre juntos -- lo opuesto de
+    `_wire_exclusive_group` (que fuerza "solo uno a la vez", este fuerza
+    "todos o ninguno"). Pensado para ítems que en la práctica son la misma
+    tarea repartida en dos casillas (ej. REGISTRO EN AD y RSAT: RSAT es un
+    paso obligatorio de REGISTRO EN AD, así que no tiene sentido dejar que
+    el técnico marque uno sin el otro).
+
+    A diferencia de `_wire_exclusive_group`, los miembros de un
+    `linked_group` no necesariamente se crean juntos (pueden estar en
+    columnas o grupos distintos del catálogo), así que esta función se
+    llama UNA SOLA VEZ después de terminar de armar TODAS las columnas
+    (`checkboxes` ya debe tener el catálogo completo) -- no adentro de
+    `build_checkbox_column`."""
+    groups: dict[str, list[QCheckBox]] = {}
+    for item, checkbox in checkboxes.values():
+        if item.linked_group:
+            groups.setdefault(item.linked_group, []).append(checkbox)
+
+    for members in groups.values():
+        if len(members) < 2:
+            continue  # un solo ítem con ese linked_group no tiene con qué enlazarse
+
+        # Si alguno viene marcado por defecto en el catálogo, sincroniza el
+        # resto desde el arranque (en vez de dejar un estado inconsistente
+        # en pantalla).
+        if any(cb.isChecked() for cb in members):
+            for cb in members:
+                cb.setChecked(True)
+
+        def make_handler(current: QCheckBox, members=members):
+            def handler(checked: bool) -> None:
+                for other in members:
+                    if other is not current:
+                        other.setChecked(checked)
+
+            return handler
+
+        for cb in members:
+            cb.toggled.connect(make_handler(cb))
+
+
 def reapply_exclusive_constraints(checkboxes: dict[str, tuple[AppItem, QCheckBox]]) -> None:
     """Vuelve a aplicar la regla de "solo uno a la vez" en todos los grupos
     exclusivos presentes en `checkboxes`. Hace falta llamarla después de

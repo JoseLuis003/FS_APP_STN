@@ -55,7 +55,7 @@ from app.copa_id_setup import (
 from app.installer import InstallLogger, InstallManager
 from app.installer_detect import detect_silent_args
 from app.report import REBOOT_PENDING_VERSION_LABEL, generate_report, is_reboot_pending_message
-from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints
+from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints, wire_linked_groups
 
 # Id del ítem especial "Copa ID (Asset Tag)" (columna 1, junto a los demás
 # ítems de Dell -- ver `app/copa_id_setup.py` para el detalle completo del
@@ -737,6 +737,11 @@ class MainWindow(QMainWindow):
         columns_row.setSpacing(30)
         for column in self.columns:
             columns_row.addLayout(self._build_column(column, inline_widgets))
+        # Enlaza ítems de un mismo `linked_group` (ej. REGISTRO EN AD y
+        # RSAT) -- tiene que hacerse DESPUÉS de armar todas las columnas
+        # porque sus miembros pueden vivir en columnas distintas (ver
+        # docstring de `wire_linked_groups`).
+        wire_linked_groups(self.checkboxes)
         columns_row.addStretch(1)
         root.addLayout(columns_row)
         root.addStretch(1)

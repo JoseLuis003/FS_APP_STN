@@ -348,12 +348,24 @@ de Windows Update (`/LimitAccess`), porque muchas estaciones de Copa no
 tienen salida a internet — usa como fuente los `.cab` locales en
 `<installers_base_path>\RSAT-ActiveDirectory-Offline\`.
 
-Es un ítem aparte, no algo de lo que dependa la pantalla DOMINIO — esa
-pantalla ya funciona sin RSAT a propósito (usa ADSI directo, ver
-"Pantalla DOMINIO" más abajo) porque RSAT normalmente no viene instalado
-de fábrica en un equipo recién provisionado. Este ítem existe para dejar
-esas herramientas disponibles en el equipo por si el técnico las
-necesita más adelante para administración de AD en general.
+No depende de la pantalla DOMINIO — esa pantalla ya funciona sin RSAT a
+propósito (usa ADSI directo, ver "Pantalla DOMINIO" más abajo) porque
+RSAT normalmente no viene instalado de fábrica en un equipo recién
+provisionado. Este ítem existe para dejar esas herramientas disponibles
+en el equipo por si el técnico las necesita más adelante para
+administración de AD en general.
+
+**Enlazado con REGISTRO EN AD (`"linked_group": "rsat_ad"`):** marcar
+cualquiera de las dos casillas marca automáticamente la otra (y
+desmarcar una desmarca la otra) — ver "Grupos enlazados" más arriba.
+RSAT ya es, además, un paso obligatorio DENTRO de REGISTRO EN AD en
+`config/apps.json` (`extra_steps`: primero `rsat_ad_tools_setup`, después
+`Scripts/REG_AD.ps1` — el .msu hotfix del ítem sigue siendo el primer
+paso), así que aunque el enlace de checkboxes fallara por algún motivo,
+marcar solo REGISTRO EN AD igual instala RSAT antes de correr el script.
+El enlace existe para que, al revés, marcar solo esta casilla
+independiente también dispare REGISTRO EN AD — nunca deben quedar
+desincronizados.
 
 **Pedido explícito: la ruta de origen nunca queda fija a `C:\`.** Se
 arma en tiempo de ejecución a partir de `installers_base_path` (la misma
@@ -718,6 +730,23 @@ habilitar si se desmarca). Este mecanismo vive en
 `app/ui/catalog_widgets.py` y lo puede usar cualquier catálogo (APPS
 también, si algún día lo necesita) — basta con agregar el campo
 `exclusive_group` a los ítems correspondientes en el JSON.
+
+**Grupos enlazados (marcar/desmarcar siempre juntos):** lo opuesto de los
+grupos exclusivos — algunos ítems del catálogo SIEMPRE deben instalarse
+juntos, agregándoles el campo `"linked_group"` con el mismo valor de
+texto. Caso real: REGISTRO EN AD y RSAT (Herramientas de Active Directory)
+comparten `"linked_group": "rsat_ad"`, porque RSAT ya es un paso
+obligatorio de REGISTRO EN AD (ver "RSAT: Herramientas de Active
+Directory" más abajo) y no tiene sentido dejar que el técnico marque uno
+sin el otro. A diferencia de `exclusive_group`, los ítems de un mismo
+`linked_group` NO se dibujan juntos en una fila — cada uno mantiene su
+lugar normal en su columna — solo quedan enlazados por comportamiento: al
+marcar uno se marcan automáticamente los demás del grupo, y al desmarcar
+uno se desmarcan los demás (enlace bidireccional, funciona con 2 o más
+miembros). Este mecanismo vive en `wire_linked_groups()`
+(`app/ui/catalog_widgets.py`) y se aplica una sola vez, después de armar
+todas las columnas de la pantalla (`MainWindow._build_ui()`), porque sus
+miembros pueden vivir en columnas distintas del catálogo.
 
 **Panel "Shares Configuracion" (`app/ui/shares_config_panel.py`):** al
 marcar la casilla "Shares Configuracion" del catálogo aparece debajo un

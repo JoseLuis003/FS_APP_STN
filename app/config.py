@@ -90,6 +90,17 @@ class AppItem:
     # juntos en una fila y solo se puede marcar uno a la vez (ver
     # app/ui/catalog_widgets.py). Ejemplo: GEMALTO / 3M / DESKO.
     exclusive_group: str = ""
+    # Lo opuesto de `exclusive_group`: si no está vacío, este ítem SIEMPRE
+    # debe quedar marcado/desmarcado junto con los demás ítems que
+    # comparten el mismo valor de `linked_group` (por ejemplo, "REGISTRO EN
+    # AD" y "RSAT (Herramientas de Active Directory)": RSAT es un paso
+    # obligatorio de REGISTRO EN AD, así que no tiene sentido dejar que el
+    # técnico marque uno sin el otro). A diferencia de `exclusive_group`,
+    # los ítems de un mismo `linked_group` NO se dibujan juntos en una fila
+    # -- cada uno mantiene su lugar normal en su columna -- solo quedan
+    # enlazados por comportamiento (ver `wire_linked_groups` en
+    # `app/ui/catalog_widgets.py`).
+    linked_group: str = ""
     # Algunas apps necesitan correr más de un paquete en secuencia bajo UNA
     # sola casilla (ej. BGInfo: primero el .exe, después un .bat; SAP GUI:
     # 5 pasos). `installer`/`silent_args`/`installer_type` de arriba son
@@ -278,6 +289,7 @@ def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:
                     enabled=it.get("enabled", True),
                     version=it.get("version", "N/D"),
                     exclusive_group=it.get("exclusive_group", ""),
+                    linked_group=it.get("linked_group", ""),
                     extra_steps=it.get("extra_steps", []),
                     exit_code_messages=it.get("exit_code_messages", {}),
                 )

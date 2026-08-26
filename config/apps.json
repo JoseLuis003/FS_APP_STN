@@ -37,7 +37,8 @@
               "extra_steps": [ { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" } ] },
             { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "stn_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "microsoft_office_365", "label": "Microsoft Office 365",  "installer": "",                             "silent_args": "",                                "installer_type": "exe",    "default_checked": false, "enabled": false, "version": "N/D" }
           ]
         },
         {

@@ -37,6 +37,7 @@ from __future__ import annotations
 import subprocess
 
 from app.config import SCRIPTS_DIR
+from app.report import get_serial_number
 
 DOMAIN_NAME = "copaair.com"
 
@@ -268,7 +269,7 @@ def check_computer_name_available(computer_name: str, username: str, password: s
     _interpret_name_check_result(result, computer_name)
 
 
-def join_domain(current_name: str, new_name: str, ou_dn: str, username: str, password: str) -> None:
+def join_domain(current_name: str, new_name: str, ou_dn: str, username: str, password: str) -> str:
     """Une el equipo al dominio `copaair.com`, en la OU indicada
     (`ou_dn`, uno de los valores de `OU_OPTIONS`), renombrándolo en el mismo
     paso si `new_name` es distinto de `current_name`.
@@ -277,6 +278,10 @@ def join_domain(current_name: str, new_name: str, ou_dn: str, username: str, pas
     `check_computer_name_available()` que el nombre final (el nuevo si se
     va a renombrar, o el actual si no) no exista ya en Active Directory --
     ver el docstring de esa función para el bug real que esto evita.
+
+    Devuelve el nombre final con el que quedó el equipo (`target_name`) --
+    lo necesita el llamador para armar el DN del objeto de equipo en
+    `apply_computer_description()`, que se corre después.
 
     Lanza `ComputerNameExistsError` si ese nombre ya existe en AD,
     `BadCredentialsError` si el usuario/contraseña son incorrectos (la UI
@@ -296,6 +301,7 @@ def join_domain(current_name: str, new_name: str, ou_dn: str, username: str, pas
 
     result = _run_powershell_script("join_domain.ps1", args, stdin_text=(password or "") + "\n")
     _interpret_result(result, "No se pudo unir el equipo al dominio")
+    return target_name
 
 
 def _interpret_ou_list_result(result: subprocess.CompletedProcess) -> list[tuple[str, str]]:
@@ -386,3 +392,42 @@ def apply_post_join_setup() -> None:
     args = ["-AdminGroups", ",".join(LOCAL_ADMIN_GROUPS)]
     result = _run_powershell_script("post_join_setup.ps1", args)
     _interpret_result(result, "No se pudo completar la configuración posterior a la unión al dominio")
+
+
+def apply_computer_description(computer_name: str, ou_dn: str, username: str, password: str) -> None:
+    """Escribe el número de serie del equipo (el mismo valor que ya usa la
+    app en el reporte y en Copa ID / Asset Tag, ver
+    `app.report.get_serial_number`) en el campo "Description" del objeto de
+    equipo en Active Directory -- pedido explícito, para que el equipo de
+    soporte lo pueda ver directo en Active Directory Users and Computers.
+
+    Se corre DESPUÉS de que `join_domain()` ya creó el objeto de equipo
+    (`computer_name` debe ser el `target_name` que devuelve esa función),
+    y ANTES de `apply_post_join_setup()` -- a diferencia de ese paso, este
+    SÍ necesita las credenciales de dominio del técnico (hace un bind LDAP
+    propio, ver `scripts/set_computer_description.ps1`), así que debe
+    correr mientras la contraseña todavía está en memoria.
+
+    Si este paso falla, el equipo de todos modos ya quedó unido al
+    dominio -- la UI lo debe mostrar como advertencia y no como fallo
+    total (mismo criterio que `apply_post_join_setup`). Ver el docstring
+    de `scripts/set_computer_description.ps1` para un riesgo conocido y
+    sin resolver a propósito en esta primera versión: posible demora de
+    replicación entre controladores de dominio justo después de crear el
+    objeto de equipo.
+
+    Lanza `BadCredentialsError` si el usuario/contraseña son incorrectos,
+    o `DomainJoinError` para cualquier otro problema."""
+    serial_number = get_serial_number()
+    computer_dn = f"CN={computer_name},{ou_dn}"
+    args = [
+        "-DomainName", DOMAIN_NAME,
+        "-ComputerDN", computer_dn,
+        "-Username", full_username(username),
+        "-Description", serial_number,
+    ]
+    result = _run_powershell_script("set_computer_description.ps1", args, stdin_text=(password or "") + "\n")
+    _interpret_result(
+        result,
+        f"No se pudo escribir el número de serie ('{serial_number}') en el campo Description de Active Directory",
+    )

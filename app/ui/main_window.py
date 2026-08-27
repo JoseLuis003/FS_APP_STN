@@ -74,14 +74,18 @@ NUEVO_PRESET_IDS = {
     "dell_ownertag",
     "adobe_reader",
     "forcepoint",
+    "crowdstrike",
     "google_chrome",
     "ms_teams_work",
     "windows_updates",
     "anyconnect",
     "background",
     "ajustes_necesarios",
+    "registro_ad",
+    "rsat_ad_tools",
     "shortcuts",
     "manage_engine",
+    "windows_activation",
     "netfx35",
 }
 

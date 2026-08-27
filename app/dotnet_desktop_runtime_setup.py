@@ -14,13 +14,22 @@ Confirmado en una prueba real de campo: un Dell Latitude 5280 genuino
 P0P70_WIN64_5.7.1_A00.EXE`) terminó con código de salida 4 pese a ser
 hardware Dell soportado -- descartando así un problema de hardware o
 de sistema operativo no soportado (las otras causas típicas de ese
-código). Reportes de la comunidad de Dell sobre esta misma serie 5.x
-confirman el motivo real: el instalador de DCU exige tener ya instalado
-el Microsoft .NET Desktop Runtime dentro de un rango de versión
-específico (ver `_MIN_VERSION`/`_MAX_VERSION`) -- ni versiones
-anteriores a ese rango ni versiones más nuevas (ej. la 8.0.18, que
-Microsoft ya liberó y excede el máximo que DCU revisa) sirven, aunque
-esté "instalado algún .NET".
+código).
+
+**Versión requerida (revisado, reemplaza una suposición anterior):**
+otra prueba real de campo, con la MISMA versión de DCU, mostró el
+mensaje real del instalador (InstallShield) en vez de solo el código 4:
+"Microsoft .NET Desktop Runtime 10.0 with version greater than 10.0.7
+(x64) needs to be installed for this installation to continue." -- es
+decir, DCU exige la serie 10.x (no la 8.x que unos reportes de la
+comunidad habían sugerido en una revisión anterior de este módulo), con
+un piso de versión (mayor a 10.0.7) y SIN techo documentado -- a
+diferencia del caso 8.x, acá Dell no menciona rechazar versiones más
+nuevas. Por eso `_MIN_VERSION` ya no tiene un `_MAX_VERSION` que lo
+acompañe: cualquier versión de Microsoft.WindowsDesktop.App mayor a
+10.0.7 ya instalada se acepta tal cual, sin reinstalar nada.
+`_list_installed_versions()`/`_find_compatible_version()` siguen
+sirviendo igual, con la comparación de rango ajustada.
 
 Usado como PRIMER paso (instalador PRINCIPAL) del ítem "dell_command"
 en config/apps.json, con el EXE real de Dell Command Update como
@@ -35,29 +44,34 @@ import re
 import subprocess
 from pathlib import Path
 
-# Rango de versión de Microsoft.WindowsDesktop.App que reportes de la
-# comunidad de Dell confirman que acepta el instalador de Dell Command
-# Update serie 5.x: entre 8.0.8 y 8.0.17 (x64). Por eso no alcanza con
-# detectar "algún" runtime instalado -- tiene que caer en este rango.
-_MIN_VERSION = (8, 0, 8)
-_MAX_VERSION = (8, 0, 17)
+# Versión mínima (EXCLUSIVA) de Microsoft.WindowsDesktop.App que exige
+# el instalador de Dell Command Update serie 5.x, según su propio
+# mensaje de error real: "version greater than 10.0.7 (x64)" -- por eso
+# el mínimo aceptado acá es 10.0.8, no 10.0.7. A diferencia de una
+# revisión anterior de este módulo (que asumía un rango 8.0.8-8.0.17 a
+# partir de reportes de la comunidad), DCU no menciona ningún techo
+# para la serie 10.x -- no hay `_MAX_VERSION`.
+_MIN_VERSION = (10, 0, 8)
 
 # Carpeta estándar donde Windows registra cada "shared framework" de
 # .NET instalado, una subcarpeta por versión (ej.
-# "...\\Microsoft.WindowsDesktop.App\\8.0.17\\").
+# "...\\Microsoft.WindowsDesktop.App\\10.0.11\\").
 _SHARED_FRAMEWORK_DIR = r"C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App"
 
 # Instalador offline que hay que colocar junto a los demás, en
 # "<installers_base_path>\\DotNetDesktopRuntime\\..." (ver
 # installers_base_path) -- no se descarga nada en el momento porque
 # muchas estaciones de Copa no tienen salida a internet (mismo
-# criterio que NetFX35). Se eligió a propósito la versión 8.0.17 (tope
-# superior que acepta DCU 5.x): sirve tanto si no hay NINGÚN runtime
-# instalado como si ya hay uno más nuevo que DCU no acepta (ej.
-# 8.0.18) -- los runtimes de .NET conviven instalados en paralelo
-# (side-by-side), así que agregar este no reemplaza ni afecta ningún
-# otro que ya esté.
-_INSTALLER_SUBPATH_PARTS = ("DotNetDesktopRuntime", "windowsdesktop-runtime-8.0.17-win-x64.exe")
+# criterio que NetFX35). Se eligió la 10.0.11 (última publicada por
+# Microsoft al momento de este cambio, agosto 2026) porque ya cumple
+# "mayor a 10.0.7" con margen -- descarga oficial:
+# https://dotnet.microsoft.com/en-us/download/dotnet/10.0 (sección
+# ".NET Desktop Runtime", instalador x64 para Windows). Los runtimes de
+# .NET conviven instalados en paralelo (side-by-side) por versión, así
+# que agregar este no reemplaza ni afecta ningún otro que ya esté
+# instalado (ej. el que use Dell Core Services u otro software de
+# fábrica).
+_INSTALLER_SUBPATH_PARTS = ("DotNetDesktopRuntime", "windowsdesktop-runtime-10.0.11-win-x64.exe")
 
 _TIMEOUT_SECONDS = 300
 
@@ -103,16 +117,16 @@ def _list_installed_versions(shared_framework_dir: str) -> list[tuple[int, int, 
 
 def _find_compatible_version(versions: list[tuple[int, int, int]]) -> tuple[int, int, int] | None:
     for version in versions:
-        if _MIN_VERSION <= version <= _MAX_VERSION:
+        if version >= _MIN_VERSION:
             return version
     return None
 
 
 def ensure_dotnet_desktop_runtime_installed(installers_base_path: str) -> str:
-    """Confirma que haya un Microsoft .NET Desktop Runtime dentro del
-    rango que acepta Dell Command Update serie 5.x (ver
-    `_MIN_VERSION`/`_MAX_VERSION`); si no lo hay, lo instala desde el
-    instalador offline local en
+    """Confirma que haya un Microsoft .NET Desktop Runtime que cumpla lo
+    que exige Dell Command Update serie 5.x (mayor a 10.0.7, ver
+    `_MIN_VERSION`); si no lo hay, lo instala desde el instalador
+    offline local en
     `<installers_base_path>\\DotNetDesktopRuntime\\...` (nunca lo
     descarga de internet -- mismo criterio que NetFX35, ver
     `app/netfx35_setup.py`). Es idempotente: si ya hay una versión

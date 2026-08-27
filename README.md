@@ -408,39 +408,50 @@ El ítem `dell_command` tiene 2 pasos, en este orden:
    `app/dotnet_desktop_runtime_setup.py`,
    `ensure_dotnet_desktop_runtime_installed`). Confirmado en una prueba
    real de campo, en un Dell Latitude 5280 genuino (no una VM): el EXE
-   de Dell Command Update 5.7.1 (`installer_type: "exe"`, silencioso
-   con `/s`) terminaba con **código de salida 4**, que en el esquema
-   estándar de Dell Update Package (DUP) significa "hard dependency
-   error" — un prerequisito obligatorio no cumplido, que no se puede
-   forzar con `/f`. Se descartó hardware no soportado (era un Dell
-   genuino) y sistema operativo no soportado; la causa real, confirmada
-   con reportes de la propia comunidad de Dell sobre esta misma serie
-   5.x, es que el instalador de Dell Command Update exige tener ya
+   de Dell Command Update 5.7.1 terminaba con **código de salida 4**,
+   que en el esquema estándar de Dell Update Package (DUP) significa
+   "hard dependency error" — un prerequisito obligatorio no cumplido,
+   que no se puede forzar con `/f`. Se descartó hardware no soportado
+   (era un Dell genuino) y sistema operativo no soportado; la causa
+   real es que el instalador de Dell Command Update exige tener ya
    instalado el **Microsoft .NET Desktop Runtime** (el ".NET" moderno —
    NO ".NET Framework 3.5", que es el prerequisito de BFirst, ver
-   arriba) dentro de un rango de versión específico: entre 8.0.8 y
-   8.0.17 (x64). Ni la ausencia total del runtime ni una versión más
-   nueva (ej. la 8.0.18, que Microsoft ya liberó y excede el máximo que
-   revisa el instalador de DCU) sirven — en ambos casos, DCU aborta
-   igual con el código 4.
+   arriba) en una versión mínima.
+
+   **Versión requerida (revisado):** una revisión anterior de este
+   módulo asumía, a partir de reportes de la comunidad de Dell, un
+   rango 8.0.8–8.0.17 (x64). Otra prueba real de campo con la MISMA
+   versión de DCU (5.7.1) mostró el mensaje real del instalador
+   (InstallShield) en vez de solo el código 4: *"Microsoft .NET Desktop
+   Runtime 10.0 with version greater than 10.0.7 (x64) needs to be
+   installed for this installation to continue."* — es decir, DCU exige
+   la serie **10.x** (no la 8.x), con un piso de versión (mayor a
+   10.0.7) y sin techo documentado — a diferencia del caso 8.x, acá
+   Dell no menciona rechazar versiones más nuevas.
 
    `ensure_dotnet_desktop_runtime_installed()` primero revisa si ya hay
    una versión compatible instalada (mirando las subcarpetas de
    `C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\`, sin
-   necesitar `dotnet.exe` en el PATH) — si la hay, no hace nada más
-   (idempotente). Si no, instala desde un instalador offline local en
+   necesitar `dotnet.exe` en el PATH) — si la hay (cualquier versión
+   mayor a 10.0.7), no hace nada más (idempotente). Si no, instala desde
+   un instalador offline local en
    `<installers_base_path>\DotNetDesktopRuntime\windowsdesktop-runtime-
-   8.0.17-win-x64.exe` (mismo criterio que NetFX35: nunca se descarga
+   10.0.11-win-x64.exe` (mismo criterio que NetFX35: nunca se descarga
    nada de internet, porque muchas estaciones de Copa no tienen salida
    — hay que colocar ese `.exe` junto a los demás instaladores, dentro
-   de una carpeta `DotNetDesktopRuntime`). Se eligió a propósito
-   instalar la versión 8.0.17 (el tope superior que acepta DCU 5.x):
-   como los runtimes de .NET conviven instalados en paralelo
-   (side-by-side), agregar esta versión no reemplaza ni afecta ninguna
-   otra que ya esté — sirve tanto si no había NINGÚN runtime instalado
-   como si ya había uno más nuevo e incompatible.
-2. El EXE real de Dell Command Update 5.7.1 (`extra_step`, sin cambios
-   — sigue siendo `installer_type: "exe"` con `/s`).
+   de una carpeta `DotNetDesktopRuntime`; descarga oficial:
+   [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/en-us/download/dotnet/10.0),
+   sección ".NET Desktop Runtime", instalador x64 para Windows). Se
+   eligió la 10.0.11 (última publicada por Microsoft en agosto 2026)
+   porque ya cumple "mayor a 10.0.7" con margen: como los runtimes de
+   .NET conviven instalados en paralelo (side-by-side), agregar esta
+   versión no reemplaza ni afecta ninguna otra que ya esté (ej. la que
+   use Dell Core Services u otro software de fábrica) — sirve tanto si
+   no había NINGÚN runtime instalado como si ya había uno incompatible
+   (de la serie 8.x, o exactamente 10.0.7).
+2. El EXE real de Dell Command Update 5.7.1 (`extra_step`,
+   `installer_type: "exe"`, **sin** parámetro de instalación silenciosa
+   — pedido explícito del usuario).
 
 ### Copa ID (Asset Tag) (`app/copa_id_setup.py`)
 

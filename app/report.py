@@ -19,6 +19,12 @@ from app.config import APP_ROOT
 
 REPORTS_DIR = APP_ROOT / "reports"
 
+# Evita que Windows le abra su propia ventana de consola a PowerShell
+# (aunque el comando dure poco, igual se ve un parpadeo confuso en
+# pantalla) -- ver la explicación completa en `NO_CONSOLE_WINDOW`,
+# `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def _run_powershell(command: str) -> str:
     """Corre un comando corto de PowerShell y devuelve su salida (vacío si
@@ -29,6 +35,7 @@ def _run_powershell(command: str) -> str:
             capture_output=True,
             text=True,
             timeout=10,
+            creationflags=_NO_CONSOLE_WINDOW,
         )
         return result.stdout.strip()
     except Exception:

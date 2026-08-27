@@ -79,6 +79,12 @@ _TIMEOUT_SECONDS = 300
 # SUCCESS_CODES en app/installer.py): 3010 = éxito, pide reiniciar.
 _SUCCESS_CODES = {0, 3010}
 
+# Evita que Windows le abra su propia ventana de consola al instalador
+# offline del .NET Desktop Runtime (quedaría en blanco y parecería
+# colgado) -- ver la explicación completa en `NO_CONSOLE_WINDOW`,
+# `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 _VERSION_DIR_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
 
 
@@ -148,7 +154,9 @@ def ensure_dotnet_desktop_runtime_installed(installers_base_path: str) -> str:
     installer_path = Path(ntpath.join(installers_base_path, *_INSTALLER_SUBPATH_PARTS))
     command = [str(installer_path), "/install", "/quiet", "/norestart"]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS, creationflags=_NO_CONSOLE_WINDOW
+        )
     except subprocess.TimeoutExpired:
         raise DotNetDesktopRuntimeError(".NET Desktop Runtime: tiempo de espera agotado.")
     except OSError as exc:

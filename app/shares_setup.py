@@ -50,6 +50,11 @@ import ctypes
 import subprocess
 from pathlib import Path
 
+# Evita que Windows le abra su propia ventana de consola a icacls/
+# regedit/regsvr32 (quedaría en blanco y parecería colgado) -- ver la
+# explicación completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Carpeta donde el .msi de Shares 5.0 deja todo instalado.
 LTP_DIR = Path(r"C:\LTP")
 
@@ -90,7 +95,7 @@ def _run_checked(cmd: list[str], step_label: str) -> subprocess.CompletedProcess
     0. Común a los 3 pasos de este módulo que invocan una herramienta de
     línea de comandos (icacls, regedit, regsvr32)."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5 * 60)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5 * 60, creationflags=_NO_CONSOLE_WINDOW)
     except subprocess.TimeoutExpired:
         raise SharesSetupError(f"{step_label}: tiempo de espera agotado (5 min).")
     except OSError as exc:

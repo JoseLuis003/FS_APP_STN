@@ -77,6 +77,25 @@ DOMINIO").
 - Mientras se instala algo, junto al texto "Instalando: ..." aparece una
   barra de progreso (modo indeterminado, ya que los instaladores silenciosos
   no reportan un % real de avance). Desaparece automáticamente al terminar.
+- **Ninguna herramienta de línea de comandos abre su propia ventana de
+  consola** — reporte real de campo: sin esto, cada paso "script"/"msu"
+  (ej. "Windows-Updates-w11", o el hotfix .msu de REGISTRO EN AD) abría
+  una ventana de PowerShell/consola en blanco (Windows le crea una
+  consola nueva y visible a un proceso de este tipo aunque su
+  stdout/stderr ya estén redirigidos a un pipe) que se quedaba así,
+  vacía, durante todo el paso — el técnico lo interpretaba como que la
+  instalación se había colgado, aunque FS_APP_STN (tapada detrás) ya
+  mostraba su propio "Instalando: ..." con la barra de arriba. Cada
+  `subprocess.run(...)` de la app (14 sitios en 13 módulos: motor de
+  instalación, DOMINIO, RSAT, NetFX35, DELL Command Update, Activar
+  Windows, Copa ID, AJUSTES NECESARIOS, BackGround, y el resto de pasos
+  del catálogo LTP/CSS) pasa `creationflags=CREATE_NO_WINDOW` para
+  evitarlo — ver el comentario completo junto a `NO_CONSOLE_WINDOW` en
+  `app/installer.py`. No afecta a instaladores con interfaz gráfica
+  propia (EXE/MSI sin instalación silenciosa, ej. Dell Command Update,
+  DELL Optimizer, DELL OwnerTag): el flag solo suprime la consola de
+  procesos de "subsistema de consola", no las ventanas de una app
+  gráfica.
 - Al terminar una instalación se genera automáticamente un **reporte**
   (ver sección abajo) y se abre en el navegador.
 - El nombre y la versión que se ven en cada checkbox y en el reporte salen

@@ -45,6 +45,12 @@ LOCKSCREEN_DIR = Path(r"C:\Windows\Web\Screen")
 
 _TIMEOUT_SECONDS = 60
 
+# Evita que Windows le abra su propia ventana de consola a cada comando
+# que corre `_run_checked()` (quedaría en blanco y parecería colgado)
+# -- ver la explicación completa en `NO_CONSOLE_WINDOW`,
+# `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 class BrandingSetupError(Exception):
     """Error esperado al aplicar el paso "BackGround" (BGInfo + pantalla
@@ -54,7 +60,9 @@ class BrandingSetupError(Exception):
 
 def _run_checked(cmd: list[str], step_label: str) -> None:
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS, creationflags=_NO_CONSOLE_WINDOW
+        )
     except subprocess.TimeoutExpired:
         raise BrandingSetupError(f"{step_label}: tiempo de espera agotado.")
     except OSError as exc:

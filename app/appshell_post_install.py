@@ -35,6 +35,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
+# Evita que Windows le abra su propia ventana de consola a `icacls`
+# (quedaría en blanco y parecería colgado) -- ver la explicación
+# completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Carpeta donde el instalador de AppShell deja todo instalado -- necesita
 # permisos abiertos para que la app pueda escribir su configuración.
 DEFAULT_DXC_PATH = Path(r"C:\Program Files (x86)\DXC Technology")
@@ -75,6 +80,7 @@ def grant_full_control_everyone(dxc_path: Path = DEFAULT_DXC_PATH) -> str:
             capture_output=True,
             text=True,
             timeout=5 * 60,
+            creationflags=_NO_CONSOLE_WINDOW,
         )
     except subprocess.TimeoutExpired:
         raise AppShellPostInstallError(f"icacls: tiempo de espera agotado (5 min) sobre '{dxc_path}'.")

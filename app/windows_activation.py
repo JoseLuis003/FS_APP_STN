@@ -59,6 +59,11 @@ PRODUCT_KEY = "KJ377-NTFV4-TT6DJ-7MC63-Y4G44"
 _DOMAIN_CHECK_TIMEOUT_SECONDS = 30
 _SLMGR_TIMEOUT_SECONDS = 60
 
+# Evita que Windows le abra su propia ventana de consola a PowerShell/
+# cscript (quedaría en blanco y parecería colgado) -- ver la
+# explicación completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 class WindowsActivationError(Exception):
     """Error esperado al activar Windows (equipo no unido al dominio,
@@ -84,7 +89,7 @@ def is_domain_joined(timeout: int = _DOMAIN_CHECK_TIMEOUT_SECONDS) -> bool:
         "(Get-CimInstance -ClassName Win32_ComputerSystem).PartOfDomain",
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, creationflags=_NO_CONSOLE_WINDOW)
     except FileNotFoundError as exc:
         raise WindowsActivationError("No se encontró PowerShell en este equipo.") from exc
     except subprocess.TimeoutExpired as exc:
@@ -115,7 +120,7 @@ def _run_slmgr_step(installers_base_path: str, args: list[str], timeout: int = _
 
     cmd = ["cscript", "//nologo", str(script_path), *args]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, creationflags=_NO_CONSOLE_WINDOW)
     except subprocess.TimeoutExpired:
         raise WindowsActivationError(f"Tiempo de espera agotado ejecutando 'slmgr.vbs {' '.join(args)}'.")
     except OSError as exc:

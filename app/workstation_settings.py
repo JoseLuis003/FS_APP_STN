@@ -64,6 +64,11 @@ LGPO_BACKUP_SUBDIR = "LocalGPO"
 _TIMEOUT_SECONDS = 60
 _LGPO_TIMEOUT_SECONDS = 5 * 60
 
+# Evita que Windows le abra su propia ventana de consola a cada comando
+# que corre `_run()` (quedaría en blanco y parecería colgado) -- ver la
+# explicación completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 class WorkstationSettingsError(Exception):
     """Error esperado en uno de los pasos CRÍTICOS de "AJUSTES NECESARIOS"
@@ -78,7 +83,7 @@ def _run(cmd: list[str], timeout: int = _TIMEOUT_SECONDS) -> subprocess.Complete
     nada -- lo interpreta cada llamador según si ese paso es "mejor
     esfuerzo" o crítico (ver `_apply_best_effort` vs los pasos críticos
     más abajo, que sí revisan el resultado)."""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, creationflags=_NO_CONSOLE_WINDOW)
 
 
 def _describe_failure(result: subprocess.CompletedProcess) -> str:

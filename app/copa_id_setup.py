@@ -46,6 +46,11 @@ _TIMEOUT_SECONDS = 120
 # los demás instaladores).
 _CCTK_RELATIVE_PARTS = ("Copa_ID", "cctk.exe")
 
+# Evita que Windows le abra su propia ventana de consola a `cctk.exe`
+# (quedaría en blanco y parecería colgado) -- ver la explicación
+# completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 class CopaIdSetupError(Exception):
     """Error al grabar el Asset Tag vía cctk.exe. El mensaje ya viene
@@ -117,7 +122,9 @@ def apply_copa_id_asset_tag(asset_tag: str, installers_base_path: str) -> str:
 
     command = [str(cctk_path), f"--asset={asset_tag}"]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS, creationflags=_NO_CONSOLE_WINDOW
+        )
     except subprocess.TimeoutExpired:
         raise CopaIdSetupError("cctk.exe (Copa ID / Asset Tag): tiempo de espera agotado.")
     except OSError as exc:

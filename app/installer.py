@@ -39,6 +39,47 @@ from app.workstation_settings import apply_workstation_settings
 # se trata como éxito en vez de detener la cola.
 SUCCESS_CODES = {0, 3010, 1638}
 
+# Reporte real de campo: durante "Windows-Updates-w11" (y en general
+# cualquier paso "script"/"msu", ej. el hotfix .msu de REGISTRO EN AD),
+# el técnico ve una ventana de PowerShell en pantalla completa/azul,
+# SIN nada escrito en ella, durante todo el paso -- y lo interpreta como
+# que la instalación se colgó, aunque FS_APP_STN.exe (tapada detrás)
+# YA muestra "Instalando: <ítem>..." con su propia barra de progreso
+# (ver `MainWindow._on_item_started`/`DominioWindow`, que se actualizan
+# apenas arranca cada paso).
+#
+# La causa: `subprocess.run(...)` de más abajo lanza una herramienta de
+# consola (powershell.exe, wusa.exe, cmd.exe/.bat) desde FS_APP_STN.exe,
+# que es una app SIN consola propia (PyInstaller `--windowed`). Windows
+# le crea una consola NUEVA y VISIBLE a ese proceso hijo aunque su
+# stdout/stderr ya estén redirigidos a un pipe (`capture_output=True`)
+# -- la redirección de stdout/stderr y la existencia de la ventana de
+# consola son dos cosas independientes; hace falta pedir explícitamente
+# que Windows NO cree esa ventana.
+#
+# `NO_CONSOLE_WINDOW` se agrega como `creationflags` a CADA
+# `subprocess.run(...)` de la app (no solo acá -- ver el mismo patrón en
+# `app/netfx35_setup.py`, `app/rsat_setup.py`, `app/domain_join.py`, y
+# el resto de módulos que lanzan una herramienta de línea de comandos)
+# para que el técnico solo vea la interfaz de FS_APP_STN mientras el
+# paso corre en segundo plano, sin ninguna ventana en blanco que
+# confunda. NO afecta a instaladores con interfaz gráfica propia (EXE/
+# MSI sin instalación silenciosa, ej. Dell Command Update, DELL
+# Optimizer, DELL OwnerTag): `CREATE_NO_WINDOW` solo suprime la consola
+# de procesos de "subsistema de consola" -- una app gráfica (subsistema
+# Windows/GUI) no usa consola en absoluto, así que este flag no le
+# afecta ni oculta su ventana propia.
+#
+# `getattr(subprocess, "CREATE_NO_WINDOW", 0)` en vez de la constante
+# directa porque `CREATE_NO_WINDOW` solo existe en el módulo
+# `subprocess` en Windows -- acceder al atributo directo
+# (`subprocess.CREATE_NO_WINDOW`) lanzaría `AttributeError` en
+# Linux/Mac, donde se desarrolla y prueba esta app. Con
+# `getattr(..., 0)`, fuera de Windows queda en 0 -- el mismo valor por
+# defecto que ya tiene `creationflags` cuando no se pasa, así que no
+# cambia nada fuera de Windows (ni en las pruebas).
+NO_CONSOLE_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Detecta una ruta absoluta de Windows ("C:\..." / "C:/..." / "\\servidor\...")
 # sin depender de `Path.is_absolute()` -- esa función se comporta distinto
 # según el sistema operativo donde corre el código (en Linux, que es donde se
@@ -264,6 +305,7 @@ class InstallWorker(QThread):
                     capture_output=True,
                     text=True,
                     timeout=30 * 60,  # 30 minutos por paso
+                    creationflags=NO_CONSOLE_WINDOW,
                 )
             except subprocess.TimeoutExpired:
                 msg = f"Tiempo de espera agotado (30 min){step_tag}."

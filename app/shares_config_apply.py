@@ -145,6 +145,11 @@ import re
 import subprocess
 from pathlib import Path
 
+# Evita que Windows le abra su propia ventana de consola a
+# `Contingencia.bat` (quedaría en blanco y parecería colgado) -- ver la
+# explicación completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Ruta donde vive la configuración de Shares en el equipo. Se puede pasar
 # una ruta distinta a `apply_shares_configuration()` (útil para pruebas).
 DEFAULT_BASE_DIR = Path(r"C:\LTP\AppDatCM")
@@ -695,6 +700,7 @@ def run_contingencia_script(installers_base_path: str) -> str:
             capture_output=True,
             text=True,
             timeout=10 * 60,  # 10 minutos
+            creationflags=_NO_CONSOLE_WINDOW,
         )
     except subprocess.TimeoutExpired:
         raise SharesConfigError(f"Tiempo de espera agotado (10 min) al correr '{script_path}'.")

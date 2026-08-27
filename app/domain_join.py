@@ -95,6 +95,12 @@ LOCAL_ADMIN_GROUPS: list[str] = [
 
 _POWERSHELL_TIMEOUT_SECONDS = 120
 
+# Evita que Windows le abra su propia ventana de consola a PowerShell
+# (quedaría en blanco y parecería colgado -- reporte real de campo,
+# justo en esta pantalla) -- ver la explicación completa en
+# `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 class DomainJoinError(Exception):
     """Error al unir el equipo al dominio, o en los pasos posteriores
@@ -151,6 +157,7 @@ def _run_powershell_script(
             capture_output=True,
             text=True,
             timeout=timeout,
+            creationflags=_NO_CONSOLE_WINDOW,
         )
     except FileNotFoundError as exc:
         raise DomainJoinError("No se encontró PowerShell en este equipo.") from exc

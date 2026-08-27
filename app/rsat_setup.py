@@ -40,6 +40,11 @@ _TIMEOUT_SECONDS = 600
 # SUCCESS_CODES en app/installer.py): 3010 = éxito, pide reiniciar.
 _SUCCESS_CODES = {0, 3010}
 
+# Evita que Windows le abra su propia ventana de consola a `dism.exe`
+# (quedaría en blanco y parecería colgado) -- ver la explicación
+# completa en `NO_CONSOLE_WINDOW`, `app/installer.py`.
+_NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Nombre de la "capability" que instala esto -- el mismo que usaría
 # `Add-WindowsCapability -Name ...` en PowerShell, pero acá se usa DISM
 # directo (sin depender de un módulo de PowerShell aparte), igual que
@@ -138,7 +143,9 @@ def ensure_rsat_ad_tools_installed(installers_base_path: str) -> str:
 
     command = _build_dism_command(installers_base_path)
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=_TIMEOUT_SECONDS, creationflags=_NO_CONSOLE_WINDOW
+        )
     except subprocess.TimeoutExpired:
         raise RsatSetupError("DISM (RSAT AD DS/LDS Tools): tiempo de espera agotado.")
     except OSError as exc:

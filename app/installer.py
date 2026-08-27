@@ -25,6 +25,7 @@ from app.shortcuts import (
     copy_bfirst_assets_and_shortcut,
     copy_mto_assets_and_shortcuts,
     copy_stn_assets_and_shortcuts,
+    create_server_access_shortcut,
 )
 from app.vpn_setup import apply_vpn_setup
 from app.windows_activation import run_windows_activation
@@ -136,6 +137,7 @@ def _python_step_handlers() -> dict:
         "windows_activation": run_windows_activation,
         "branding_setup": apply_branding_setup,
         "stn_shortcuts": copy_stn_assets_and_shortcuts,
+        "server_access_shortcut": create_server_access_shortcut,
         "workstation_settings": apply_workstation_settings,
         "bginfo_registration": apply_bginfo_registration,
         "mto_shortcuts": copy_mto_assets_and_shortcuts,

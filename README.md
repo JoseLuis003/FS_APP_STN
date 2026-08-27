@@ -201,6 +201,30 @@ columna (IGView, cortona3d.msi, Toolbox Print); copiar "todo lo que haya
 ahí" también copiaría esos instaladores al escritorio público, así que
 para MTO no aplica el mismo cambio.
 
+#### Acceso directo al servidor de la estación (`create_server_access_shortcut`, extra_step)
+
+El ítem `shortcuts` tiene, además, un `extra_step` (`server_access_shortcut`)
+que corre justo después de lo de arriba: crea en el escritorio público un
+acceso directo al servidor de la ESTACIÓN del equipo, apuntando a
+`\\<ESTACIÓN>-<DEPARTAMENTO>-SRV-01`. Porta `AccesoSERVER()` del VB.NET
+original (que arma el acceso directo vía COM/`WScript.Shell`, igual que
+los accesos directos de Shares — no viene copiado de la carpeta de
+instaladores como el resto de "Shortcuts"), generalizado para tomar
+también el código de departamento del hostname (el original solo cubría
+"ATO", con `-ATO-SRV-01` fijo en el código):
+
+- El hostname del equipo se parte en 2: los primeros 3 caracteres son el
+  código de estación, los siguientes 3 el de departamento. Ej.:
+  `SJOATO...` → estación `SJO` + departamento `ATO` → `\\SJO-ATO-SRV-01`;
+  `SJOCTO...` → `SJO` + `CTO` → `\\SJO-CTO-SRV-01`.
+- Si el hostname empieza con `HDQ`, `ATO`, `CTN`, `GBT`, `PACT`, `TUM` o
+  `HNG`, el equipo es de oficinas centrales u otra dependencia sin
+  servidor propio de estación — **no se crea ningún acceso directo**, y
+  esto NO se trata como error (el paso termina en éxito, con un mensaje
+  indicando que no aplica para ese equipo).
+- El hostname se obtiene con `app.report.get_computer_name()` (el mismo
+  dato que ya usa el reporte de instalación).
+
 ### AJUSTES NECESARIOS (`app/workstation_settings.py`)
 
 Ítem `installer_type: "python"` (`workstation_settings`), portado de

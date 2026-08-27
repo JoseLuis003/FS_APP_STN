@@ -267,6 +267,116 @@ def copy_stn_assets_and_shortcuts(
 
 
 # --------------------------------------------------------------------------
+# Acceso directo al servidor de la estación, dentro de "Shortcuts" (id
+# `shortcuts` en el catálogo, ver `config/apps.json`, `extra_steps`) --
+# portado de `AccesoSERVER()` del VB.NET original. A diferencia de todo
+# lo demás en este archivo (que COPIA accesos directos ya armados desde
+# la carpeta de instaladores), este se ARMA en el momento vía COM, igual
+# que `create_ltp_shares_shortcuts()` más arriba -- porque el nombre del
+# servidor depende del hostname del equipo, no se puede dejar un .lnk
+# fijo en el medio de instalación.
+#
+# `AccesoSERVER()` armaba el nombre del servidor tomando los primeros 3
+# caracteres del hostname como código de estación, y agregaba siempre
+# "-ATO-SRV-01" -- ese sub solo cubría el departamento ATO. El pedido
+# real cubre más de un departamento (ATO, CTO, ...), así que acá el
+# código de departamento también se toma del hostname en vez de quedar
+# fijo en el código:
+#
+#   SJOATO...  -> estación "SJO" + departamento "ATO" -> \\SJO-ATO-SRV-01
+#   SJOCTO...  -> estación "SJO" + departamento "CTO" -> \\SJO-CTO-SRV-01
+#
+# Ciertos equipos no son de una estación con su propio servidor (son de
+# oficinas centrales u otras dependencias sin ese esquema) -- para esos
+# NO se debe crear ningún acceso directo. Se detectan porque el hostname
+# empieza directamente con uno de estos códigos, en vez de un código de
+# estación de 3 letras seguido de un departamento:
+_SERVER_SHORTCUT_EXCLUDED_PREFIXES = (
+    "HDQ",
+    "ATO",
+    "CTN",
+    "GBT",
+    "PACT",
+    "TUM",
+    "HNG",
+)
+
+
+def _server_shortcut_target(hostname: str) -> str | None:
+    """Devuelve el nombre UNC del servidor de estación que le corresponde
+    a `hostname` (ej. `"\\\\SJO-ATO-SRV-01"`), o `None` si a este equipo
+    NO le corresponde ningún acceso directo de servidor -- porque el
+    hostname empieza con uno de `_SERVER_SHORTCUT_EXCLUDED_PREFIXES`
+    (oficinas centrales u otra dependencia sin servidor propio de
+    estación), o porque es demasiado corto para tener un código de
+    estación (3 letras) + uno de departamento (3 letras más)."""
+    normalized = (hostname or "").strip().upper()
+    if any(normalized.startswith(prefix) for prefix in _SERVER_SHORTCUT_EXCLUDED_PREFIXES):
+        return None
+    if len(normalized) < 6:
+        return None
+
+    estacion = normalized[0:3]
+    departamento = normalized[3:6]
+    return f"\\\\{estacion}-{departamento}-SRV-01"
+
+
+def create_server_access_shortcut(
+    installers_base_path: str,
+    public_desktop: Path = PUBLIC_DESKTOP,
+    hostname: str | None = None,
+) -> str:
+    """Handler registrado como paso `installer_type: "python"` (clave
+    `server_access_shortcut`), agregado como `extra_step` del ítem
+    `shortcuts` (ver `config/apps.json`) -- corre junto con
+    `copy_stn_assets_and_shortcuts()` cuando se marca "Shortcuts".
+
+    `installers_base_path` no se usa acá adentro (el acceso directo se
+    arma vía COM, no se copia desde la carpeta de instaladores); se
+    mantiene en la firma porque todo paso `installer_type: "python"` lo
+    recibe igual, lo use o no (`app/installer.py`,
+    `handler(self.installers_base_path)`).
+
+    Crea el acceso directo al servidor de la estación en el escritorio
+    público (ej. `SJO-ATO-SRV-01.lnk` apuntando a `\\SJO-ATO-SRV-01`),
+    según el hostname del equipo (ver `_server_shortcut_target`). Si a
+    este equipo no le corresponde ningún servidor, NO crea nada y lo dice
+    en el mensaje de retorno -- no es un error, es el comportamiento
+    esperado para esos equipos (a diferencia de cualquier otro paso de
+    este archivo, que sí falla si algo esperado no aparece).
+
+    `hostname`: por defecto usa el nombre real del equipo
+    (`app.report.get_computer_name()`, mismo dato que ya usa el reporte
+    de instalación); se puede pasar explícito en pruebas.
+
+    Lanza `ShortcutError` si no se pudo crear el acceso directo (mismo
+    manejo de errores que `create_ltp_shares_shortcuts`)."""
+    if hostname is None:
+        from app.report import get_computer_name
+
+        hostname = get_computer_name()
+
+    target = _server_shortcut_target(hostname)
+    if target is None:
+        return f"Acceso a servidor: no aplica para este equipo ('{hostname}')"
+
+    server_name = target.lstrip("\\")
+    shortcut_path = Path(public_desktop) / f"{server_name}.lnk"
+    try:
+        _create_shortcut(
+            shortcut_path=shortcut_path,
+            target_path=Path(target),
+            arguments="",
+            description=target,
+            working_directory=Path(target),
+        )
+    except Exception as exc:  # COM puede lanzar varios tipos de error distintos
+        raise ShortcutError(f"No se pudo crear el acceso directo '{shortcut_path}': {exc}") from exc
+
+    return f"Acceso directo al servidor creado: {shortcut_path} -> {target}"
+
+
+# --------------------------------------------------------------------------
 # "ShortCut-MTO" del catálogo APPS (3ra columna, id `shortcut_mto`),
 # portado de `MTO\ShortCut_MTO.bat`. Mismo patrón que "Shortcuts" (STN)
 # arriba, pero con su PROPIA carpeta `Copaair` (distinta de la de

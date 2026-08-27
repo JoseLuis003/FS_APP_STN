@@ -39,7 +39,8 @@
                 { "installer": "Scripts/REG_AD.ps1", "silent_args": "", "installer_type": "script" }
               ] },
             { "id": "rsat_ad_tools",    "label": "RSAT (Herramientas de Active Directory)", "installer": "rsat_ad_tools_setup", "silent_args": "",              "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D", "linked_group": "rsat_ad" },
-            { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "stn_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "stn_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D",
+              "extra_steps": [ { "installer": "server_access_shortcut", "silent_args": "", "installer_type": "python" } ] },
             { "id": "manage_engine",    "label": "Manage Engine",             "installer": "Desktop-Central/UEMSAgent/Agent_Install.ps1", "silent_args": "",                  "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "microsoft_office_365", "label": "Microsoft Office 365",  "installer": "ODT/setup.exe",                "silent_args": "/configure configuration.xml",    "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "16.0.20326.20112" }

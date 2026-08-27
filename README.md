@@ -134,11 +134,21 @@ Porta el botón "Activador de Windows" del VB.NET original:
    (`Application.Exit()`), acá el resto del catálogo sigue disponible con
    normalidad.
 2. Si está unido, configura la clave de producto y activa Windows contra
-   el KMS interno de Copa, invocando `Scripts\slmgr.vbs` (dentro de la
-   carpeta de instaladores) con `cscript //nologo` — primero
-   `/ipk <clave>`, después `/ato`. Se usa `cscript`, no `wscript`, para que
-   la salida de `slmgr.vbs` quede como texto normal (log/mensaje de error)
-   en vez de aparecer como cuadros de diálogo emergentes.
+   el KMS interno de Copa, invocando `slmgr.vbs` con `cscript //nologo` —
+   primero `/ipk <clave>`, después `/ato`. Se usa `cscript`, no `wscript`,
+   para que la salida de `slmgr.vbs` quede como texto normal (log/mensaje
+   de error) en vez de aparecer como cuadros de diálogo emergentes.
+
+**Revisado:** el VB.NET original (y una primera versión de este módulo)
+apuntaban a una copia PROPIA de `slmgr.vbs` dentro de la carpeta de
+instaladores (`Scripts\slmgr.vbs`). Reporte real de campo: ese archivo
+faltaba en el medio de instalación de una estación y el paso falló con
+"No se encontró '...\Scripts\slmgr.vbs'". Como **todo Windows ya trae su
+propio `slmgr.vbs`** en `%WINDIR%\System32\slmgr.vbs` desde Windows Vista
+(cualquier edición), ahora se usa esa copia de sistema directamente —
+ruta fija, no relativa a la carpeta de instaladores — así que el paso ya
+no depende de que el técnico haya copiado nada a esa carpeta, ni de qué
+unidad (USB/disco local) se esté usando en ese momento.
 
 Si `/ipk` falla, `/ato` nunca se intenta. Si cualquiera de los dos pasos
 de `slmgr.vbs` termina con un código de salida distinto de 0, el mensaje
@@ -1444,7 +1454,7 @@ FS_APP_STN/
 │   ├── appshell_post_install.py # paso post-instalación de AppShell 4.00.0030 (reemplaza "CSS permision.bat")
 │   ├── copa_id_setup.py       # "Copa ID (Asset Tag)" (APPS, 1ra columna): detecta/valida el Asset Tag y corre cctk.exe --asset=
 │   ├── domain_join.py         # orquesta la unión al dominio (botón DOMINIO)
-│   ├── windows_activation.py  # "Activar Windows" (APPS, 2da columna): valida dominio + slmgr.vbs /ipk /ato
+│   ├── windows_activation.py  # "Activar Windows" (APPS, 2da columna): valida dominio + slmgr.vbs /ipk /ato (usa el slmgr.vbs propio de Windows, no una copia en la carpeta de instaladores)
 │   ├── branding_setup.py      # "BackGround" (APPS, 2da columna): BGInfo + pantalla de bloqueo (port de background.bat)
 │   ├── workstation_settings.py # "AJUSTES NECESARIOS" (APPS, 2da columna): Chrome/Edge/SysMain/IPv6/LGPO (port de AJUSTES_NECESARIOS.bat)
 │   └── ui/

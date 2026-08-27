@@ -36,7 +36,20 @@ A diferencia del original, acá:
 - Si `/ipk` falla, `/ato` nunca se intenta (a diferencia de un posible
   "seguir de largo" silencioso); el mensaje de error incluye la salida de
   `slmgr.vbs` tal cual, para que el técnico vea el motivo real (ej. una
-  clave de producto rechazada, o sin conexión al KMS interno)."""
+  clave de producto rechazada, o sin conexión al KMS interno).
+- **Revisado (reemplaza una decisión anterior):** el VB.NET original
+  apuntaba a una copia PROPIA de `slmgr.vbs` en la carpeta de
+  instaladores (`installers_base_path\Scripts\slmgr.vbs`), y esa misma
+  copia se mantuvo acá al portar el módulo. Reporte real de campo: ese
+  archivo faltaba en el medio de instalación de una estación y el paso
+  falló con "No se encontró '...\Scripts\slmgr.vbs'" -- un fallo
+  evitable, porque **todo Windows ya trae su propio `slmgr.vbs`** en
+  `%WINDIR%\System32\slmgr.vbs` desde Windows Vista, en cualquier
+  edición. Ahora se usa esa copia de sistema directamente
+  (`SLMGR_SCRIPT_PATH`, ruta fija) en vez de una relativa a
+  `installers_base_path` -- ya no depende de que el técnico haya
+  copiado nada a la carpeta de instaladores, ni de qué unidad (USB/disco
+  local) se esté usando en ese momento."""
 from __future__ import annotations
 
 import subprocess
@@ -44,13 +57,15 @@ from pathlib import Path
 
 from app.domain_join import DOMAIN_NAME
 
-# Ruta del script, relativa a `installers_base_path` -- mismo criterio que
-# `CONTINGENCIA_SCRIPT_REL` en `app/shares_config_apply.py`. El VB.NET
-# original apuntaba a una copia propia en la carpeta de instaladores
-# ("C:\CM APPS\APPS\Scripts\slmgr.vbs") en vez del `slmgr.vbs` que ya trae
-# Windows en `%WINDIR%\System32` -- se mantiene esa misma copia propia acá,
-# por fidelidad con la infraestructura ya armada en esa carpeta.
-SLMGR_SCRIPT_REL = r"Scripts\slmgr.vbs"
+# `slmgr.vbs` ya viene de fábrica en TODO Windows (desde Vista) en esta
+# misma ruta fija -- no hace falta llevar una copia propia en la carpeta
+# de instaladores (ver el punto "Revisado" del docstring del módulo,
+# arriba). Ruta absoluta, no relativa a `installers_base_path` (a
+# diferencia del resto del catálogo): el sistema operativo siempre vive
+# en `C:\Windows` en las estaciones de Copa, sin importar desde qué
+# unidad se esté ejecutando FS_APP_STN.exe (mismo criterio que
+# `BGINFO_DIR`/`LOCKSCREEN_DIR` en `app/branding_setup.py`).
+SLMGR_SCRIPT_PATH = Path(r"C:\Windows\System32\slmgr.vbs")
 
 # Clave de activación por volumen configurada para las estaciones de Copa
 # (KMS interno) -- la misma que usaba el VB.NET original.
@@ -106,15 +121,16 @@ def is_domain_joined(timeout: int = _DOMAIN_CHECK_TIMEOUT_SECONDS) -> bool:
     return output == "True"
 
 
-def _run_slmgr_step(installers_base_path: str, args: list[str], timeout: int = _SLMGR_TIMEOUT_SECONDS) -> str:
-    """Corre `slmgr.vbs <args>` vía `cscript //nologo` y devuelve su salida
-    (stdout) si el proceso termina con código 0. Lanza `WindowsActivationError`
-    si el script no existe, se agota el tiempo de espera, no se pudo
-    ejecutar, o termina con un código de salida distinto de 0 -- en ese
-    último caso, el mensaje incluye la salida real de `slmgr.vbs` (por
-    ejemplo, el motivo por el que rechazó la clave de producto o no pudo
-    contactar al KMS)."""
-    script_path = Path(installers_base_path) / SLMGR_SCRIPT_REL
+def _run_slmgr_step(args: list[str], timeout: int = _SLMGR_TIMEOUT_SECONDS) -> str:
+    """Corre `slmgr.vbs <args>` (la copia que ya trae Windows en
+    `SLMGR_SCRIPT_PATH`, ver el punto "Revisado" del docstring del módulo)
+    vía `cscript //nologo` y devuelve su salida (stdout) si el proceso
+    termina con código 0. Lanza `WindowsActivationError` si el script no
+    existe, se agota el tiempo de espera, no se pudo ejecutar, o termina
+    con un código de salida distinto de 0 -- en ese último caso, el
+    mensaje incluye la salida real de `slmgr.vbs` (por ejemplo, el motivo
+    por el que rechazó la clave de producto o no pudo contactar al KMS)."""
+    script_path = SLMGR_SCRIPT_PATH
     if not script_path.exists():
         raise WindowsActivationError(f"No se encontró '{script_path}'.")
 
@@ -142,6 +158,12 @@ def run_windows_activation(installers_base_path: str) -> str:
     equipo esté unido al dominio y, si lo está, configura la clave de
     producto y activa Windows contra el KMS interno de Copa.
 
+    `installers_base_path` no se usa acá adentro (`slmgr.vbs` se invoca
+    desde `SLMGR_SCRIPT_PATH`, una ruta fija del sistema -- ver el punto
+    "Revisado" del docstring del módulo); se mantiene en la firma porque
+    todo paso `installer_type: "python"` lo recibe igual, lo use o no
+    (`app/installer.py`, `handler(self.installers_base_path)`).
+
     Lanza `WindowsActivationError` si el equipo no está unido al dominio,
     o si cualquiera de los dos pasos de `slmgr.vbs` falla -- el llamador
     decide cómo mostrarlo (igual que el resto de errores de instalación)."""
@@ -151,8 +173,8 @@ def run_windows_activation(installers_base_path: str) -> str:
             "por volumen de Copa solo aplica a equipos corporativos unidos al dominio."
         )
 
-    _run_slmgr_step(installers_base_path, ["/ipk", PRODUCT_KEY])
-    ato_output = _run_slmgr_step(installers_base_path, ["/ato"])
+    _run_slmgr_step(["/ipk", PRODUCT_KEY])
+    ato_output = _run_slmgr_step(["/ato"])
 
     detail = ato_output.strip() or "sin salida de slmgr.vbs"
     return f"Windows activado con la licencia por volumen de Copa (slmgr /ato: {detail})"

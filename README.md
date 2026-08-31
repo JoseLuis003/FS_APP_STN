@@ -566,6 +566,35 @@ El ítem `sap_gui` tiene 5 pasos: `vstor_redist.exe` (principal),
 `NwSapSetup.exe`, el parche `GUI800_4-80006341.EXE`, `SAPSetupSLC.exe`, y
 por último `sap_gui_setup` (`installer_type: "python"`, ver más abajo).
 
+**Revisado: se quitaron los switches de instalación desatendida de los 4
+pasos `.exe`** — reporte real de campo: "SAP GUI 7.8" seguía fallando
+incluso después de reiniciar el equipo y reintentar (ver el problema
+conocido 144/145 más abajo, que sí se resuelve reiniciando -- este era
+un fallo DISTINTO, silencioso, sin ningún detalle útil en stdout/stderr
+por venir de un instalador corriendo sin interfaz). Se quitó únicamente
+la parte de cada switch que suprime la interfaz del instalador -- no
+cualquier parámetro:
+
+- `vstor_redist.exe`: `/passive /norestart` -> `/norestart` (se quita
+  `/passive`, que ocultaba la interfaz; se mantiene `/norestart`, que no
+  tiene que ver con mostrar/ocultar nada -- evita que el instalador
+  reinicie el equipo por su cuenta a mitad de la cola de instalación).
+- `NwSapSetup.exe`: `/NoDlg /product=SAPGUI` -> `/product=SAPGUI` (se
+  quita `/NoDlg`, que suprimía los diálogos del instalador; se mantiene
+  `/product=SAPGUI`, que no oculta nada -- le dice al instalador CUÁL
+  producto instalar del paquete, no cómo mostrarlo).
+- `GUI800_4-80006341.EXE` (parche): `/NoDlg` -> "" (ese switch no hacía
+  otra cosa más que ocultar la interfaz).
+- `SAPSetupSLC.exe`: `/noDLG` -> "" (mismo caso).
+
+Con esto, el técnico ve el instalador real de SAP GUI en pantalla (como
+ya pasa con DELL Optimizer/DELL OwnerTag, ver más arriba) en vez de un
+fallo silencioso sin ningún detalle -- puede ver en qué paso concreto se
+traba o qué error puntual muestra SAP, algo que un instalador sin
+interfaz nunca reporta por `stdout`/`stderr`. Como contrapartida, corre
+menos "desatendido" que antes: el técnico tiene que ir haciendo clic en
+los diálogos de cada instalador para que avance.
+
 **Problema conocido: código de salida 144/145 en el paso 2
 (`NwSapSetup.exe`)** — reportado en una prueba real de campo:
 `vstor_redist.exe` (paso 1) termina OK (código 0), pero `NwSapSetup.exe`

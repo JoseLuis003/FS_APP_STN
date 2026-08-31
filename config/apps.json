@@ -53,15 +53,15 @@
                 { "installer": "BFirst/setupbolapp.exe", "silent_args": "/S /v/qn", "installer_type": "exe" },
                 { "installer": "bfirst_assets", "silent_args": "", "installer_type": "python" }
               ] },
-            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/passive /norestart",       "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8",
+            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/norestart",       "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8",
               "extra_steps": [
-                { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/NoDlg /product=SAPGUI", "installer_type": "exe",
+                { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/product=SAPGUI", "installer_type": "exe",
                   "exit_code_messages": {
                     "144": "Reinicio Pendiente: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla.",
                     "145": "Reinicio Pendiente: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla."
                   } },
-                { "installer": "SAP_GUI_7.80/parche 32 bits/GUI800_4-80006341.EXE", "silent_args": "/NoDlg", "installer_type": "exe" },
-                { "installer": "SAP_GUI_7.80/Win32/SAPSetupSLC.exe", "silent_args": "/noDLG", "installer_type": "exe" },
+                { "installer": "SAP_GUI_7.80/parche 32 bits/GUI800_4-80006341.EXE", "silent_args": "", "installer_type": "exe" },
+                { "installer": "SAP_GUI_7.80/Win32/SAPSetupSLC.exe", "silent_args": "", "installer_type": "exe" },
                 { "installer": "sap_gui_setup", "silent_args": "", "installer_type": "python" }
               ] }
           ]

@@ -569,9 +569,9 @@ por último `sap_gui_setup` (`installer_type: "python"`, ver más abajo).
 **Revisado: se quitaron los switches de instalación desatendida de los 4
 pasos `.exe`** — reporte real de campo: "SAP GUI 7.8" seguía fallando
 incluso después de reiniciar el equipo y reintentar (ver el problema
-conocido 144/145 más abajo, que sí se resuelve reiniciando -- este era
-un fallo DISTINTO, silencioso, sin ningún detalle útil en stdout/stderr
-por venir de un instalador corriendo sin interfaz). Se quitó únicamente
+conocido 144/145 más abajo -- este era un fallo DISTINTO, silencioso,
+sin ningún detalle útil en stdout/stderr por venir de un instalador
+corriendo sin interfaz). Se quitó únicamente
 la parte de cada switch que suprime la interfaz del instalador -- no
 cualquier parámetro:
 
@@ -599,42 +599,103 @@ los diálogos de cada instalador para que avance.
 (`NwSapSetup.exe`)** — reportado en una prueba real de campo:
 `vstor_redist.exe` (paso 1) termina OK (código 0), pero `NwSapSetup.exe`
 (paso 2) falla enseguida después con el código 145, sin ningún detalle en
-stdout/stderr. Confirmado contra la documentación oficial de SAP (KB
-3275253, "Component VC15RT64 is in error" — termina con "RC-145: Error
-report has been created and reboot is recommended" — y KB 3117684, sobre
-el código 144: "COM server out of process self registration failed!
-Reboot required"): estos códigos significan que el componente VC++ que
-`vstor_redist.exe` acaba de instalar necesita que **Windows reinicie**
-para terminar de registrar sus componentes COM antes de que
-`NwSapSetup.exe` pueda continuar — instalar los dos, uno detrás del otro,
-en la misma sesión, sin reiniciar en el medio, produce este fallo. Esto
-solo pasa la PRIMERA vez que se instala ese componente VC++ en un equipo
-(si ya estaba instalado de antes, `vstor_redist.exe` devuelve 1638 en vez
-de 0, y no hace falta reiniciar).
+stdout/stderr.
 
-**Solución manual** (se decidió no automatizar esto con un paso de
-prerequisito tipo NetFX35/.NET Desktop Runtime — instalar todo el ítem
-de una sola pasada no permite reiniciar a la mitad sin rediseñar el
-motor de instalación): si "SAP GUI 7.8" falla en el paso 2, **reinicia
-el equipo y vuelve a marcar la casilla "SAP GUI 7.8"** (quedó
-desmarcada automáticamente al fallar, ver "Catálogo de instalación") —
-la segunda vez, `vstor_redist.exe` detecta que el componente ya está
-instalado (código 1638) y sigue derecho con los 4 pasos restantes sin
-volver a fallar. Para que esto sea claro sin tener que buscar el código
-en este README, ese paso tiene configurado un `exit_code_messages` (ver
-`AppItem` en `app/config.py` y `InstallWorker.run()` en
-`app/installer.py`): si falla justo con el código 144 o 145, la casilla
-queda en rojo/sin marcar como cualquier fallo (sigue contando como
-error en `_results`), pero el tooltip muestra
-**"Reinicio Pendiente: el componente VC++ que se acaba de instalar
-necesita que reinicies el equipo antes de continuar. Reinicia y vuelve
-a marcar esta casilla."** en vez del genérico "código de salida 145" —
-el código real de todos modos queda igual en `logs/`. `exit_code_messages`
-es un mecanismo genérico (no específico de SAP GUI): cualquier paso de
-cualquier ítem, en `config/apps.json` o `config/ltp_css_apps.json`,
-puede definir su propio `"exit_code_messages": {"<código>": "<mensaje>"}`
-para reemplazar el mensaje genérico en códigos de salida "conocidos"
-puntuales.
+**Corrección (2026-08-31) sobre qué significan 144/145**: este README
+decía antes que estos códigos significan EXCLUSIVAMENTE que Windows
+necesita reiniciar para terminar de registrar los componentes COM del
+VC++ que acaba de instalar `vstor_redist.exe` (KB 3275253, "RC-145:
+Error report has been created and reboot is recommended"; KB 3117684,
+código 144, "COM server out of process self registration failed! Reboot
+required"). Una revisión más a fondo de la documentación de SAP (KB
+3291615, KB 3117684) muestra que 144/145 son en realidad una señal
+GENÉRICA de SAPSetup — "uno o más componentes no se pudieron
+instalar/registrar" — con al menos tres causas documentadas distintas:
+reinicio pendiente tras instalar VC++ (el caso original de arriba),
+bloqueo por GPO/Directiva de restricción de software (KB 3291615, que
+se distingue por el código de error 0x4EC/1260 — NO es lo que se vio
+acá), o un fallo genérico de registro de un componente OCX/COM
+puntual. Este último es justo el que se confirmó en el caso real de
+campo del 2026-08-31: el reporte `SapSetupErrors_*.txt` generado por
+Windows en la máquina de prueba mostró el error COM `0x80004005` al
+registrar `wdtlog.ocx` y `SAPguisv.ocx` — no un mensaje de "reinicio
+pendiente".
+
+**La causa real del fallo NO era el código 144/145 en sí, sino que la
+secuencia se cortaba ahí y nunca llegaba a correr el parche ni
+`SAPSetupSLC.exe`.** Se confirmó comparando este puerto contra el
+código fuente original en VB.NET: `Process.Start(...).WaitForExit()`
+nunca revisaba `.ExitCode` en NINGUNO de los 5 pasos de "SAP GUI 7.8" —
+por diseño (o por descuido), el VB.NET SIEMPRE corría los 5 pasos sin
+importar qué devolviera cada uno. Este puerto, en cambio, detenía todo
+el ítem apenas un paso fallaba — así que cuando `NwSapSetup.exe` (paso
+2) fallaba con 144/145, el parche `GUI800_4-80006341.EXE` (paso 3) y
+`SAPSetupSLC.exe` (paso 4) nunca llegaban a ejecutarse, aunque
+aparentemente sean justo los pasos que terminan de resolver el registro
+que `NwSapSetup.exe` dejó a medias. Un log de campo real
+(`install_20260831.log`) muestra 3 intentos de "SAP GUI 7.8" en la
+misma sesión, los 3 fallando en el paso 2/5 con 144 o 145 y sin que
+aparezca nunca un paso 3/5, 4/5 o 5/5 en el log.
+
+**Fix: `continue_on_error` en `extra_steps`** (`AppItem` en
+`app/config.py`, `InstallWorker.run()` en `app/installer.py`) — los 3
+pasos intermedios de `sap_gui` (`NwSapSetup.exe`, el parche,
+`SAPSetupSLC.exe`) tienen ahora `"continue_on_error": true` en
+`config/apps.json`. Con esto, si uno de esos 3 pasos falla, la
+secuencia NO se corta ahí — sigue con el próximo paso igual (el fallo
+queda registrado en el log de todos modos), replicando el comportamiento
+real del VB.NET original. Si al terminar toda la secuencia hubo uno o
+más pasos así, el ítem de todos modos se reporta como error (casilla en
+rojo, con el detalle de cuáles pasos fallaron) — decisión explícita
+para mantener visibilidad, en vez de replicar también el "siempre
+éxito" del VB.NET (que nunca revisaba nada, así que tampoco reportaba
+fallos reales). `continue_on_error` es estrictamente sobre "el proceso
+corrió pero devolvió un código de salida distinto de éxito" — NO aplica
+a un instalador faltante, un timeout, un `OSError` al lanzar el
+proceso, ni a una excepción de un paso `"installer_type": "python"`:
+esos casos seguían siendo fatales de inmediato también en el VB.NET
+original (un `Process.Start` con una ruta inexistente lanza una
+excepción no capturada que hubiera cortado el handler del botón igual).
+
+**Confirmado en campo (2026-08-31)**: tras este fix, en la misma
+estación donde antes fallaba, "SAP GUI 7.8" corrió los 5 pasos
+completos y SAP Logon 800 abrió correctamente con la conexión "Sap
+Single Sign On Production" (SID `PEC`, `ecc.erp.copaair.com`) ya
+cargada — confirma que el parche y `SAPSetupSLC.exe` sí terminan de
+resolver el registro que `NwSapSetup.exe` deja a medias, aunque la
+casilla haya quedado en rojo por el paso 2 fallido.
+
+**¿Y un switch tipo `/norestart` para `NwSapSetup.exe`/`SAPSetupSLC.exe`,
+como alternativa?** Se investigó esa vía antes de encontrar la causa
+real de arriba. No existe: la documentación oficial de front-end de SAP
+no lista ningún switch de supresión de reinicio para `NwSapSetup.exe`
+ni para `SAPSetupSLC.exe` — el único switch relacionado con reinicios
+es `/ForceWindowsRestart`, que hace lo contrario (fuerza un reinicio al
+terminar, no lo evita). Eso sugiere que estos instaladores no reinician
+el equipo por su cuenta, así que no hacía falta ese switch — el
+problema real nunca fue de switches. (`/norestart` sí es un switch real
+y documentado, pero de `vstor_redist.exe`, que es un instalador
+genérico de Microsoft, VC++ Redistributable — no de SAP — y ya se
+mantiene en el paso 1, ver arriba).
+
+**Solución manual, todavía válida como respaldo**: aunque ahora el
+ítem completo corre solo (sin que el técnico tenga que hacer nada), si
+la casilla queda en rojo y el mensaje dice "Reinicio Pendiente" (paso 2
+con 144/145), sigue siendo válido **reiniciar el equipo y volver a
+marcar la casilla "SAP GUI 7.8"** — la segunda vez, `vstor_redist.exe`
+suele detectar que el componente VC++ ya está instalado (código 1638
+en vez de 0). Para que este mensaje sea claro sin tener que buscar el
+código en este README, ese paso tiene configurado un
+`exit_code_messages`: si falla justo con el código 144 o 145, el
+tooltip muestra **"Reinicio Pendiente: el componente VC++ que se acaba
+de instalar necesita que reinicies el equipo antes de continuar.
+Reinicia y vuelve a marcar esta casilla."** en vez del genérico "código
+de salida 145" — el código real de todos modos queda igual en `logs/`.
+`exit_code_messages` es un mecanismo genérico (no específico de SAP
+GUI): cualquier paso de cualquier ítem, en `config/apps.json` o
+`config/ltp_css_apps.json`, puede definir su propio
+`"exit_code_messages": {"<código>": "<mensaje>"}` para reemplazar el
+mensaje genérico en códigos de salida "conocidos" puntuales.
 
 En el **reporte final** (ver la sección "Reporte de instalación" más
 abajo), este caso puntual también se distingue del resto de las fallas:
@@ -648,7 +709,13 @@ columna de versión muestra únicamente **"Reinicio Pendiente"** (sin el
 prefijo "FALLO") en vez del "FALLO" genérico — así, quien revisa el
 reporte (no necesariamente el mismo técnico que instaló) ve de un
 vistazo cuáles ítems fallidos solo necesitan un reinicio y reintentar
-(no un fallo real sin resolver), sin tener que abrir `logs/`.
+(no un fallo real sin resolver), sin tener que abrir `logs/`. **Ojo con
+"SAP GUI 7.8" específicamente**: por el fix de `continue_on_error` de
+arriba, este mensaje ahora puede aparecer aunque el ítem en realidad ya
+haya quedado funcional (el parche y `SAPSetupSLC.exe` sí llegaron a
+correr) — "Reinicio Pendiente" acá es una señal de que CONVIENE
+reiniciar y reintentar para confirmar, no una garantía de que hace
+falta.
 
 Paso extra (`installer_type: "python"`, `sap_gui_setup`), el ÚLTIMO de
 los 4 pasos extra del ítem `sap_gui` (después de `NwSapSetup.exe`, el

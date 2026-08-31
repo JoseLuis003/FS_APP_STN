@@ -105,9 +105,11 @@ class AppItem:
     # sola casilla (ej. BGInfo: primero el .exe, después un .bat; SAP GUI:
     # 5 pasos). `installer`/`silent_args`/`installer_type` de arriba son
     # siempre el PRIMER paso; cada elemento de esta lista es un paso
-    # adicional que se ejecuta después, en orden, solo si el anterior tuvo
-    # éxito -- ver `app/installer.py` (`InstallWorker`). Cada elemento es un
-    # dict con las mismas claves: {"installer": "...", "silent_args": "...",
+    # adicional que se ejecuta después, en orden -- por defecto, solo si el
+    # anterior tuvo éxito (se detiene ahí si no), salvo que el paso anterior
+    # tenga `"continue_on_error": true` (ver más abajo) -- ver
+    # `app/installer.py` (`InstallWorker`). Cada elemento es un dict con las
+    # mismas claves: {"installer": "...", "silent_args": "...",
     # "installer_type": "exe|msi|msu|script|open|python"}. "open" abre el
     # archivo (PDF, o un .exe ya instalado) sin esperar resultado -- ver
     # `app/installer.py`. Tanto el `installer` principal como los de cada
@@ -119,6 +121,31 @@ class AppItem:
     # lógica que se portó directo a Python en vez de quedar como un script
     # suelto en la carpeta de instaladores (ej. `shares_5_0`, ver
     # `app/shares_setup.py`).
+    #
+    # `"continue_on_error": true` (opcional, en el dict de un paso de
+    # `extra_steps`): si ESE paso termina con un código de salida que no es
+    # de éxito, `InstallWorker` NO detiene la secuencia -- sigue con el
+    # próximo paso igual (registrando el fallo en el log/reporte, pero sin
+    # cortar ahí). Agregado por el caso real de "SAP GUI 7.8": el VB.NET
+    # original (`Process.Start(...).WaitForExit()`, sin revisar `.ExitCode`
+    # en ningún paso) siempre corría los 5 pasos sin importar qué devolviera
+    # cada uno -- a diferencia de acá, que por defecto se detiene en el
+    # primer fallo. Confirmado en campo: si `NwSapSetup.exe` (paso 2) termina
+    # con 144/145 (un componente puntual no se pudo registrar, ver
+    # `exit_code_messages` más abajo y la sección "SAP GUI 7.8" del README),
+    # el parche y `SAPSetupSLC.exe` (pasos 3 y 4) igual necesitan correr --
+    # se quedan sin ejecutar si la secuencia se corta ahí, que es lo que
+    # pasaba antes de este cambio. Solo afecta al código de salida del
+    # proceso -- un paso con `"installer_type": "python"` que lanza una
+    # excepción, o un ejecutable que no se encuentra en la ruta esperada,
+    # siguen deteniendo la secuencia igual que siempre (`continue_on_error`
+    # no aplica ahí): el VB.NET original tampoco sobrevivía a esos 2 casos
+    # (un `Process.Start` con una ruta inexistente lanza una excepción que
+    # el código no atrapaba). Si CUALQUIER paso de la secuencia falló pero
+    # la secuencia se completó igual gracias a `continue_on_error`, el ítem
+    # de todos modos termina marcado como error al final (con el detalle de
+    # qué paso(s) fallaron) -- no queda oculto solo porque se haya podido
+    # seguir.
     extra_steps: list[dict] = field(default_factory=list)
     # Mensaje a mostrar en vez del genérico "código de salida N" cuando el
     # PRIMER paso (arriba) falla con ese código puntual -- las claves son

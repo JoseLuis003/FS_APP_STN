@@ -192,20 +192,24 @@ def build_command(item: AppItem, installer_path: Path) -> list[str]:
 
 def _iter_steps(item: AppItem):
     """Genera (installer_relativo, silent_args, installer_type,
-    exit_code_messages) para el paso principal de `item` y luego cada uno
-    de `item.extra_steps`, en el mismo orden en que deben ejecutarse.
-    `exit_code_messages` (ver `AppItem` en app/config.py) es un dict
-    {código_de_salida_como_string: mensaje} con mensajes a mostrar en vez
-    del genérico "código de salida N" cuando ESE paso falla con un código
-    puntual conocido (ej. SAP GUI 7.8, códigos 144/145 -- ver
-    `InstallWorker.run`)."""
-    yield item.installer, item.silent_args, item.installer_type, item.exit_code_messages
+    exit_code_messages, continue_on_error) para el paso principal de `item`
+    y luego cada uno de `item.extra_steps`, en el mismo orden en que deben
+    ejecutarse. `exit_code_messages` (ver `AppItem` en app/config.py) es un
+    dict {código_de_salida_como_string: mensaje} con mensajes a mostrar en
+    vez del genérico "código de salida N" cuando ESE paso falla con un
+    código puntual conocido (ej. SAP GUI 7.8, códigos 144/145 -- ver
+    `InstallWorker.run`). `continue_on_error` (ver `AppItem`, solo
+    disponible en pasos de `extra_steps` -- el paso principal siempre lo
+    trae en `False`) le dice a `InstallWorker.run` que NO detenga la
+    secuencia si ESE paso termina con código de salida distinto de éxito."""
+    yield item.installer, item.silent_args, item.installer_type, item.exit_code_messages, False
     for step in item.extra_steps:
         yield (
             step.get("installer", ""),
             step.get("silent_args", ""),
             step.get("installer_type", "exe"),
             step.get("exit_code_messages", {}),
+            step.get("continue_on_error", False),
         )
 
 
@@ -224,10 +228,20 @@ class InstallLogger:
 
 class InstallWorker(QThread):
     """Ejecuta los pasos de un ítem (el principal + `item.extra_steps`, si
-    los tiene) en segundo plano, en orden, uno detrás del otro -- se detiene
-    en el primer paso que falle (no reintenta ni sigue con los siguientes).
-    La mayoría de los ítems tienen un solo paso, así que para esos el
-    comportamiento y los mensajes son exactamente los mismos que antes."""
+    los tiene) en segundo plano, en orden, uno detrás del otro -- por
+    defecto se detiene en el primer paso que falle (no reintenta ni sigue
+    con los siguientes). La mayoría de los ítems tienen un solo paso, así
+    que para esos el comportamiento y los mensajes son exactamente los
+    mismos que antes.
+
+    Excepción: un paso de `extra_steps` con `"continue_on_error": true` (ver
+    `AppItem` en app/config.py) -- si ESE paso termina con un código de
+    salida que no es de éxito, la secuencia SIGUE con el próximo paso en
+    vez de cortarse ahí (el fallo igual queda registrado en el log). Si al
+    terminar toda la secuencia hubo uno o más pasos así, el ítem de todos
+    modos se reporta como error (con el detalle de cuáles), simplemente ya
+    se alcanzó a correr todo lo que seguía. Caso real que motivó esto: "SAP
+    GUI 7.8" -- ver el comentario de `continue_on_error` en `AppItem`."""
 
     finished_item = Signal(str, bool, str)  # item_id, success, message
 
@@ -243,8 +257,15 @@ class InstallWorker(QThread):
         steps = list(_iter_steps(item))
         total_steps = len(steps)
         last_detail = ""
+        # Mensajes de los pasos que fallaron pero, por tener
+        # `continue_on_error`, no cortaron la secuencia -- si queda alguno
+        # acá al terminar todos los pasos, el ítem se reporta como error de
+        # todos modos (ver docstring de la clase).
+        continued_failures: list[str] = []
 
-        for index, (installer_rel, silent_args, installer_type, exit_code_messages) in enumerate(steps, start=1):
+        for index, (installer_rel, silent_args, installer_type, exit_code_messages, continue_on_error) in enumerate(
+            steps, start=1
+        ):
             step_tag = f" (paso {index}/{total_steps})" if total_steps > 1 else ""
 
             if installer_type == "python":
@@ -363,9 +384,26 @@ class InstallWorker(QThread):
                 # tooltip.
                 custom_message = exit_code_messages.get(str(result.returncode))
                 message = custom_message if custom_message else f"{detail}{step_tag}"
+                if continue_on_error:
+                    # No se corta la secuencia -- ver `continue_on_error` en
+                    # `AppItem` (app/config.py) y el docstring de esta clase
+                    # (caso real: "SAP GUI 7.8"). Se guarda el mensaje para
+                    # reportar el ítem como error al final de todos modos, y
+                    # se sigue con el próximo paso sin tocar `last_detail`
+                    # (que solo se actualiza con pasos exitosos).
+                    continued_failures.append(f"{message}{step_tag}" if step_tag not in message else message)
+                    continue
                 self.finished_item.emit(item.id, False, message)
                 return
             last_detail = detail
+
+        if continued_failures:
+            # Uno o más pasos con `continue_on_error` fallaron en el camino
+            # -- la secuencia se completó igual, pero el ítem se reporta
+            # como error de todos modos (no se oculta solo porque se haya
+            # podido seguir con el resto).
+            self.finished_item.emit(item.id, False, "; ".join(continued_failures))
+            return
 
         final_detail = f"{total_steps} pasos completados ({last_detail})" if total_steps > 1 else last_detail
         self.finished_item.emit(item.id, True, final_detail)

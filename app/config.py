@@ -172,6 +172,30 @@ class AppItem:
     # `_iter_steps` en app/installer.py).
     exit_code_messages: dict[str, str] = field(default_factory=dict)
 
+    # Lista de códigos de salida ADICIONALES (adelante de los globales de
+    # siempre: 0, 3010, 1638 -- ver `SUCCESS_CODES` en app/installer.py)
+    # que este ítem puntual debe tratar como ÉXITO, no como fallo. A
+    # propósito NO se agrega nada acá a `SUCCESS_CODES` global -- ese
+    # código puede significar cualquier cosa (incluido un error real) para
+    # otro instalador del catálogo, así que la excepción queda acotada a
+    # los pasos que la declaren explícitamente.
+    #
+    # Caso real de campo: "DELL Command Update" (`Dell-Command-Update-
+    # Windows-Universal-Application...EXE /s`) termina con código 2 aunque
+    # la instalación sí se completa (confirmado a mano: la app queda en
+    # "Programas instalados"). Documentación de Dell (DUP Exit Codes):
+    # código 2 = "se requiere reiniciar el equipo para aplicar la
+    # actualización" -- una condición de éxito con reinicio pendiente,
+    # igual que el 3010 de MSI, no un error real.
+    #
+    # Si el código de salida real está además en `exit_code_messages` (ver
+    # arriba), ese texto se agrega como nota entre paréntesis en el detalle
+    # que queda en el log/reporte -- mismo dict, dos usos: mensaje de
+    # reemplazo cuando el código sigue siendo un fallo, nota aclaratoria
+    # cuando pasa a ser éxito gracias a `success_codes` (nunca los dos a
+    # la vez para el mismo código, son ramas mutuamente excluyentes).
+    success_codes: list[int] = field(default_factory=list)
+
     def resolved_installer_path(self, installers_base_path: str) -> Path:
         base = Path(installers_base_path)
         return base / self.installer
@@ -351,6 +375,7 @@ def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:
                     linked_group=it.get("linked_group", ""),
                     extra_steps=it.get("extra_steps", []),
                     exit_code_messages=it.get("exit_code_messages", {}),
+                    success_codes=it.get("success_codes", []),
                 )
                 for it in grp.get("items", [])
             ]

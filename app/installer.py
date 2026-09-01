@@ -192,17 +192,20 @@ def build_command(item: AppItem, installer_path: Path) -> list[str]:
 
 def _iter_steps(item: AppItem):
     """Genera (installer_relativo, silent_args, installer_type,
-    exit_code_messages, continue_on_error) para el paso principal de `item`
-    y luego cada uno de `item.extra_steps`, en el mismo orden en que deben
-    ejecutarse. `exit_code_messages` (ver `AppItem` en app/config.py) es un
-    dict {código_de_salida_como_string: mensaje} con mensajes a mostrar en
-    vez del genérico "código de salida N" cuando ESE paso falla con un
-    código puntual conocido (ej. SAP GUI 7.8, códigos 144/145 -- ver
-    `InstallWorker.run`). `continue_on_error` (ver `AppItem`, solo
-    disponible en pasos de `extra_steps` -- el paso principal siempre lo
-    trae en `False`) le dice a `InstallWorker.run` que NO detenga la
-    secuencia si ESE paso termina con código de salida distinto de éxito."""
-    yield item.installer, item.silent_args, item.installer_type, item.exit_code_messages, False
+    exit_code_messages, continue_on_error, success_codes) para el paso
+    principal de `item` y luego cada uno de `item.extra_steps`, en el mismo
+    orden en que deben ejecutarse. `exit_code_messages` (ver `AppItem` en
+    app/config.py) es un dict {código_de_salida_como_string: mensaje} con
+    mensajes a mostrar en vez del genérico "código de salida N" cuando ESE
+    paso falla con un código puntual conocido (ej. SAP GUI 7.8, códigos
+    144/145 -- ver `InstallWorker.run`). `continue_on_error` (ver `AppItem`,
+    solo disponible en pasos de `extra_steps` -- el paso principal siempre
+    lo trae en `False`) le dice a `InstallWorker.run` que NO detenga la
+    secuencia si ESE paso termina con código de salida distinto de éxito.
+    `success_codes` (ver `AppItem`) es una lista de códigos ADICIONALES que
+    ESE paso puntual debe tratar como éxito (ej. DELL Command Update,
+    código 2 -- ver `InstallWorker.run`)."""
+    yield item.installer, item.silent_args, item.installer_type, item.exit_code_messages, False, item.success_codes
     for step in item.extra_steps:
         yield (
             step.get("installer", ""),
@@ -210,6 +213,7 @@ def _iter_steps(item: AppItem):
             step.get("installer_type", "exe"),
             step.get("exit_code_messages", {}),
             step.get("continue_on_error", False),
+            step.get("success_codes", []),
         )
 
 
@@ -263,9 +267,14 @@ class InstallWorker(QThread):
         # todos modos (ver docstring de la clase).
         continued_failures: list[str] = []
 
-        for index, (installer_rel, silent_args, installer_type, exit_code_messages, continue_on_error) in enumerate(
-            steps, start=1
-        ):
+        for index, (
+            installer_rel,
+            silent_args,
+            installer_type,
+            exit_code_messages,
+            continue_on_error,
+            success_codes,
+        ) in enumerate(steps, start=1):
             step_tag = f" (paso {index}/{total_steps})" if total_steps > 1 else ""
 
             if installer_type == "python":
@@ -341,13 +350,45 @@ class InstallWorker(QThread):
                 self.finished_item.emit(item.id, False, msg)
                 return
 
-            success = result.returncode in SUCCESS_CODES
+            success = result.returncode in SUCCESS_CODES or result.returncode in success_codes
             detail = f"código de salida {result.returncode}"
             if result.returncode == 3010:
                 detail += " (requiere reinicio)"
             elif result.returncode == 1638:
                 detail += " (ya estaba instalado)"
+            elif success and result.returncode in success_codes:
+                # Éxito gracias a `success_codes` de ESTE paso puntual (no
+                # es uno de los códigos globales de siempre) -- si hay un
+                # texto configurado para este código en
+                # `exit_code_messages`, se agrega como nota aclaratoria
+                # (caso real: DELL Command Update, código 2 -- ver
+                # `success_codes` en app/config.py).
+                custom_note = exit_code_messages.get(str(result.returncode))
+                if custom_note:
+                    detail += f" ({custom_note})"
             self.logger.write(f"{item.label}{step_tag}: {'OK' if success else 'FALLÓ'} ({detail})")
+            # Se captura stdout/stderr siempre (no solo cuando falla) --
+            # caso real de campo: "Manage Engine" (script de PowerShell)
+            # terminaba con código 0 ("OK") sin instalar nada, y el log no
+            # tenía ninguna pista de qué había pasado adentro del script
+            # porque antes esto solo se registraba en la rama de fallo. Se
+            # trunca a 500 caracteres igual que en la rama de fallo, para
+            # no inflar el log con salidas verborrágicas (ej. logs de MSI).
+            if success:
+                # `isinstance` a propósito (no solo `result.stdout or ""`):
+                # varias pruebas existentes mockean `subprocess.run` con un
+                # `Mock(returncode=0)` sin especificar `stdout`/`stderr` --
+                # en ese caso el atributo es otro `Mock` (no `None` ni
+                # string), que nunca se había tocado en la rama de éxito
+                # antes de este cambio. Sin este chequeo, `[:500]` más
+                # abajo rompería con `TypeError: 'Mock' object is not
+                # subscriptable`.
+                stdout_ok = result.stdout.strip() if isinstance(result.stdout, str) else ""
+                stderr_ok = result.stderr.strip() if isinstance(result.stderr, str) else ""
+                if stdout_ok:
+                    self.logger.write(f"{item.label}: stdout -> {stdout_ok[:500]}")
+                if stderr_ok:
+                    self.logger.write(f"{item.label}: stderr -> {stderr_ok[:500]}")
             if not success:
                 # Se registra tanto stderr como stdout (muchos instaladores
                 # de Windows -- sobre todo los que solo muestran una

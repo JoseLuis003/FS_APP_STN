@@ -17,6 +17,7 @@ from app.appshell_post_install import run_appshell_post_install
 from app.branding_setup import apply_bginfo_registration, apply_branding_setup
 from app.config import AppItem, LOGS_DIR
 from app.dotnet_desktop_runtime_setup import ensure_dotnet_desktop_runtime_installed
+from app.manage_engine_setup import apply_manage_engine_setup
 from app.netfx35_setup import ensure_netfx35_installed
 from app.rsat_setup import ensure_rsat_ad_tools_installed
 from app.sap_gui_setup import apply_sap_gui_setup
@@ -147,6 +148,7 @@ def _python_step_handlers() -> dict:
         "netfx35_setup": ensure_netfx35_installed,
         "dotnet_desktop_runtime_setup": ensure_dotnet_desktop_runtime_installed,
         "rsat_ad_tools_setup": ensure_rsat_ad_tools_installed,
+        "manage_engine_setup": apply_manage_engine_setup,
     }
 
 

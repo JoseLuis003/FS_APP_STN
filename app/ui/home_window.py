@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -138,7 +138,8 @@ class HomeWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FS APP PORTABLE")
+        self.setWindowTitle("FS APP PORTABLE - THE LAST DANCE")
+        self.setWindowIcon(QIcon(str(ASSETS_DIR / "app_icon.ico")))
         self.setStyleSheet(_HOME_STYLESHEET)
 
         self.size_label: QLabel | None = None

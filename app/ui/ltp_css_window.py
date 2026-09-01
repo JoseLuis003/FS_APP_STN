@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -85,7 +85,7 @@ from app.appshell_config_apply import (
     apply_appshell_device_config,
     apply_appshell_mastcom_config,
 )
-from app.config import AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
+from app.config import ASSETS_DIR, AppItem, LTP_CSS_APPS_FILE, load_app_columns, load_settings, save_settings
 from app.installer import InstallLogger, InstallManager
 from app.shares_config_apply import (
     SharesConfigError,
@@ -113,6 +113,7 @@ class LtpCssWindow(QMainWindow):
         # pantalla del técnico.
         self.resize(*_initial_window_size())
         self.setWindowTitle(_BASE_TITLE)
+        self.setWindowIcon(QIcon(str(ASSETS_DIR / "app_icon.ico")))
 
         # Si se abrió desde la portada, este callback regresa a esa
         # pantalla; si no se indica, ATRAS simplemente cierra esta ventana.

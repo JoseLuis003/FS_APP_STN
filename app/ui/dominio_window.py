@@ -42,7 +42,7 @@ import subprocess
 from typing import Callable
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -57,7 +57,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import load_settings
+from app.config import ASSETS_DIR, load_settings
 from app.domain_join import (
     OU_OPTIONS,
     USERNAME_DOMAIN_SUFFIX,
@@ -231,6 +231,7 @@ class DominioWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
         self.setWindowTitle("FS APP PORTABLE - DOMINIO")
+        self.setWindowIcon(QIcon(str(ASSETS_DIR / "app_icon.ico")))
         # La hoja de estilos se aplica a nivel de QApplication en
         # `main.py` -- así también la heredan los QMessageBox de esta
         # ventana (diálogos de nivel superior aparte, que no heredan un

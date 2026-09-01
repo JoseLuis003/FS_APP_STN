@@ -44,7 +44,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,   # sin consola, como una app de escritorio normal
-    icon=None,       # ej: 'assets/icon.ico'
+    icon='assets/app_icon.ico',
     uac_admin=True,  # exige privilegios de administrador (UAC) al abrir el .exe
     # Metadatos de versión de Windows (CompanyName, FileDescription,
     # ProductName, etc. -- ver version_info.txt) para que el .exe se vea

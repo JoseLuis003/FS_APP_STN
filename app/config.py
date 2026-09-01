@@ -65,6 +65,14 @@ def get_default_installers_base_path() -> str:
     return str(root / "CM APPS" / "APPS")
 
 
+# Reconoce "<letra>:\CM APPS\APPS" (con '/' o '\', mayúsculas/minúsculas
+# indistintas, con o sin barra final) -- exactamente la forma que arma
+# `get_default_installers_base_path()`. Se usa en `load_settings()` para
+# distinguir "el técnico dejó el default de siempre" de "el técnico eligió
+# a mano una carpeta con otro nombre" (ver ahí el porqué).
+_DEFAULT_INSTALLERS_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]CM APPS[\\/]APPS[\\/]?$", re.IGNORECASE)
+
+
 APP_ROOT = get_app_root()
 CONFIG_DIR = APP_ROOT / "config"
 LOGS_DIR = APP_ROOT / "logs"
@@ -197,8 +205,32 @@ def load_settings() -> Settings:
     if not SETTINGS_FILE.exists():
         return Settings()
     data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    saved_path = data.get("installers_base_path") or ""
+    installers_base_path = saved_path or get_default_installers_base_path()
+
+    # Caso real de campo: la app corre desde una USB, y `config/settings.json`
+    # (que persiste entre arranques -- no se recalcula solo) quedó grabado
+    # con la ruta de una corrida anterior en OTRA letra de unidad (ej.
+    # "C:\CM APPS\APPS" porque esa vez corrió desde el disco local, o desde
+    # una USB que esa vez le tocó otra letra) -- Windows no garantiza que una
+    # USB conserve siempre la misma letra. Resultado: cada ítem del catálogo
+    # fallaba con "No se encontró el instalador en: <letra vieja>:\...\..."
+    # aunque la unidad ACTUAL sí tuviera la carpeta completa. `Settings`
+    # guarda la ruta tal cual la eligió el técnico (ver `base_path_edit` en
+    # `app/ui/main_window.py`), así que si esa ruta ya no existe Y tiene la
+    # forma "<letra>:\CM APPS\APPS" de siempre (no un nombre de carpeta
+    # elegido a mano, que si no existe se deja tal cual para no pisar una
+    # elección real del técnico -- ej. una ruta de red temporalmente
+    # inalcanzable), se recalcula con la unidad desde la que corre la app
+    # AHORA -- si esa sí existe, se usa esa en vez de insistir con la letra
+    # vieja.
+    if saved_path and _DEFAULT_INSTALLERS_PATH_RE.match(saved_path) and not Path(saved_path).exists():
+        current_drive_path = get_default_installers_base_path()
+        if Path(current_drive_path).exists():
+            installers_base_path = current_drive_path
+
     return Settings(
-        installers_base_path=data.get("installers_base_path") or get_default_installers_base_path(),
+        installers_base_path=installers_base_path,
         logs_path=data.get("logs_path", Settings.logs_path),
         run_mode=data.get("run_mode", Settings.run_mode),
     )

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QRegularExpression, Qt, QTimer
-from PySide6.QtGui import QGuiApplication, QRegularExpressionValidator
+from PySide6.QtGui import QGuiApplication, QIcon, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from app.config import (
     APPS_FILE,
+    ASSETS_DIR,
     AppItem,
     Settings,
     add_app_item,
@@ -686,7 +687,8 @@ def _initial_window_size() -> tuple[int, int]:
 class MainWindow(QMainWindow):
     def __init__(self, on_back: Callable[[], None] | None = None):
         super().__init__()
-        self.setWindowTitle("FS_APP_STN - Instalador desatendido")
+        self.setWindowTitle("FS APP PORTABLE - APPS")
+        self.setWindowIcon(QIcon(str(ASSETS_DIR / "app_icon.ico")))
         # La hoja de estilos (checkboxes, botones, QMessageBox, etc.) se
         # aplica a nivel de QApplication en `main.py` -- así también la
         # heredan los QMessageBox de esta ventana, que son diálogos de

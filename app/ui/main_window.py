@@ -67,6 +67,41 @@ from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_cons
 # (ver `app/ui/ltp_css_window.py`).
 COPA_ID_ITEM_ID = "copa_id"
 
+# Id del ítem "REGISTRO EN AD" -- a diferencia de "Copa ID", SÍ pasa por el
+# motor de instalación genérico normal (3 pasos: hotfix .msu, RSAT AD DS/LDS
+# Tools, y por último `Scripts/REG_AD.ps1`, ver `config/apps.json` y
+# `app/rsat_setup.py`), pero además tiene un campo de texto al lado
+# (`self.owner_user_edit`) donde el técnico escribe el usuario de dominio
+# del DUEÑO real del equipo (ej. "jperez", sin "@copaair.com" -- mismo
+# formato que espera `Get-ADUser -Identity` en REG_AD.ps1).
+#
+# Pedido explícito de campo: antes, `REG_AD.ps1` tomaba este usuario
+# automáticamente de `$env:USERNAME` (la sesión de Windows con la que corre
+# FS_APP_STN.exe) -- una corrección ANTERIOR había quitado a propósito un
+# `Read-Host` interactivo ahí porque colgaba la ejecución desatendida
+# esperando una respuesta que nunca llegaba (ver REG_AD.ps1). El problema
+# real de campo: en la práctica esa sesión de Windows suele ser una cuenta
+# local genérica del técnico (ej. "CM"), NO el usuario final que va a ser
+# dueño del equipo -- así que "ManagedBy" quedaba mal asignado en AD.
+#
+# Solución: en vez de un diálogo emergente (que sorprendería si hay más
+# ítems marcados junto con este, y no se podría prellenar/corregir con
+# tranquilidad antes de arrancar la cola), se usa el mismo mecanismo que
+# "Copa ID (Asset Tag)": un campo de texto SIEMPRE visible en la fila del
+# ítem, vía `inline_widgets` (ver `_build_ui`). A diferencia de Copa ID,
+# este ítem SÍ sigue pasando por la cola normal -- el valor del campo no se
+# le pasa como argumento de línea de comandos a `REG_AD.ps1` (eso
+# necesitaría cambiar el motor genérico de `InstallWorker` para un caso
+# especial más), sino por una variable de entorno
+# (`FS_APP_STN_AD_OWNER_USER`) que se define en el proceso ANTES de
+# arrancar la cola (ver `_on_installar`) -- `subprocess.run` (que usa
+# `InstallWorker` para correr cada paso) hereda el entorno del proceso
+# padre por defecto, así que `REG_AD.ps1` la ve sin ningún cambio en
+# `app/installer.py`. Si por algún motivo la variable no llegara a estar
+# (ej. alguien corre el script a mano fuera de la app), `REG_AD.ps1` cae de
+# vuelta a `$env:USERNAME` como antes -- nunca falla por falta de este dato.
+REGISTRO_AD_ITEM_ID = "registro_ad"
+
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
     "bginfo",
@@ -737,7 +772,8 @@ class MainWindow(QMainWindow):
         # casilla, en vez de aparte (mismo mecanismo que usa
         # `AppShellConfigPanel` en `app/ui/ltp_css_window.py`).
         self.asset_tag_edit = self._build_asset_tag_edit()
-        inline_widgets = {COPA_ID_ITEM_ID: self.asset_tag_edit}
+        self.owner_user_edit = self._build_owner_user_edit()
+        inline_widgets = {COPA_ID_ITEM_ID: self.asset_tag_edit, REGISTRO_AD_ITEM_ID: self.owner_user_edit}
 
         columns_row = QHBoxLayout()
         columns_row.setSpacing(30)
@@ -788,6 +824,20 @@ class MainWindow(QMainWindow):
         detected = detect_current_asset_tag()
         if detected:
             edit.setText(detected)
+        return edit
+
+    def _build_owner_user_edit(self) -> QLineEdit:
+        """Construye el campo de texto de "REGISTRO EN AD": el usuario de
+        dominio (ej. "jperez") del dueño real del equipo, que
+        `_on_installar` valida y pasa a `REG_AD.ps1` vía la variable de
+        entorno `FS_APP_STN_AD_OWNER_USER` (ver `REGISTRO_AD_ITEM_ID` más
+        arriba para el porqué). Empieza vacío a propósito -- a diferencia
+        del Asset Tag (que sí se puede detectar solo por WMI), no hay forma
+        de adivinar quién va a ser el dueño de un equipo recién
+        provisionado; que el técnico lo escriba siempre a mano evita
+        registrar por error a la cuenta local genérica de turno."""
+        edit = QLineEdit()
+        edit.setPlaceholderText("usuario de dominio (ej. jperez)")
         return edit
 
     def _build_controls(self) -> QHBoxLayout:
@@ -900,6 +950,9 @@ class MainWindow(QMainWindow):
         # -- si no, `_build_ui()` lo reemplazaría por lo que detecte WMI de
         # nuevo, descartando una corrección manual que el técnico ya hizo.
         asset_tag_text = self.asset_tag_edit.text() if hasattr(self, "asset_tag_edit") else ""
+        # Mismo motivo que `asset_tag_text` arriba: no perder lo que el
+        # técnico ya haya escrito en "REGISTRO EN AD" al reconstruir la UI.
+        owner_user_text = self.owner_user_edit.text() if hasattr(self, "owner_user_edit") else ""
         self.checkboxes = {}
         self.columns = load_app_columns()
         self._build_ui()
@@ -908,6 +961,8 @@ class MainWindow(QMainWindow):
                 checkbox.setChecked(True)
         if asset_tag_text:
             self.asset_tag_edit.setText(asset_tag_text)
+        if owner_user_text:
+            self.owner_user_edit.setText(owner_user_text)
 
     def _on_nuevo(self) -> None:
         self._apply_preset(NUEVO_PRESET_IDS)
@@ -941,6 +996,25 @@ class MainWindow(QMainWindow):
                     "El Asset Tag debe ser exactamente 6 dígitos numéricos antes de presionar INSTALAR.",
                 )
                 return
+
+        # "REGISTRO EN AD" SÍ pasa por la cola normal (a diferencia de Copa
+        # ID) -- acá solo se valida que el técnico haya escrito el usuario
+        # owner y se lo deja listo en una variable de entorno para que
+        # `REG_AD.ps1` lo use en vez de `$env:USERNAME` (ver
+        # `REGISTRO_AD_ITEM_ID` para el detalle completo del mecanismo).
+        registro_ad_entry = self.checkboxes.get(REGISTRO_AD_ITEM_ID)
+        apply_registro_ad = registro_ad_entry is not None and registro_ad_entry[0] in selected
+        if apply_registro_ad:
+            owner_user_value = self.owner_user_edit.text().strip()
+            if not owner_user_value:
+                QMessageBox.warning(
+                    self,
+                    "REGISTRO EN AD",
+                    "Escribe el usuario de dominio del dueño del equipo (ej. \"jperez\") antes de "
+                    "presionar INSTALAR.",
+                )
+                return
+            os.environ["FS_APP_STN_AD_OWNER_USER"] = owner_user_value
 
         if not Path(self.settings.installers_base_path).exists():
             QMessageBox.critical(
@@ -1114,5 +1188,9 @@ class MainWindow(QMainWindow):
             copa_id_entry = self.checkboxes.get(COPA_ID_ITEM_ID)
             copa_id_enabled = copa_id_entry[0].enabled if copa_id_entry is not None else True
             self.asset_tag_edit.setEnabled(enabled and copa_id_enabled)
+        if hasattr(self, "owner_user_edit"):
+            registro_ad_entry = self.checkboxes.get(REGISTRO_AD_ITEM_ID)
+            registro_ad_enabled = registro_ad_entry[0].enabled if registro_ad_entry is not None else True
+            self.owner_user_edit.setEnabled(enabled and registro_ad_enabled)
         if enabled:
             reapply_exclusive_constraints(self.checkboxes)

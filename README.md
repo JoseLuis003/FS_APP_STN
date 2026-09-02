@@ -521,6 +521,15 @@ a último momento, dejando al `.cab` de RSAT (empaquetado para el build
 anterior) desactualizado para ese mismo equipo, en la misma sesión de
 instalación.
 
+**Ojo: esto NO es la única forma de llegar al mismo mismatch.** Aunque
+"Windows-Updates-w11" corra al final de la cola (ver la corrección de
+arriba), el mismo 0x800f0912 va a volver a pasar en **cualquier equipo
+imageado desde una ISO de Windows más nueva que el build para el que está
+empaquetado el `.cab` de `RSAT-ActiveDirectory-Offline\`** — en ese caso
+el mismatch ya existe desde ANTES de abrir FS_APP_STN (nadie lo cambió a
+mitad de una corrida), así que ningún orden de instalación lo evita. Ver
+el checklist de abajo.
+
 **Esto es un problema de contenido/medio (el paquete `.cab` de
 `RSAT-ActiveDirectory-Offline\`), no un bug de este código** — ningún
 cambio en `rsat_setup.py` puede hacer que DISM acepte un `.cab`
@@ -538,6 +547,40 @@ haya quedado en el equipo (y, por separado, vale la pena confirmar si
 conviene que "Windows-Updates-w11" no corra justo antes de RSAT en la
 misma cola, ya que fue lo que aparentemente cambió el build a mitad de
 instalación en este caso real).
+
+#### Checklist: al adoptar una ISO de Windows nueva para imagear equipos
+
+Pedido explícito de campo (2026-09-02): en Copa, cada vez que sale una ISO
+de Windows 11 nueva, la descargan y la usan para imagear equipos — eso
+cambia el build "de fábrica" de las estaciones nuevas, sin que
+"Windows-Updates-w11" ni ningún otro paso de FS_APP_STN tenga que ver. Si
+el `.cab` de `RSAT-ActiveDirectory-Offline\` se queda con el build viejo,
+**todos** los equipos imageados con la ISO nueva van a fallar con
+0x800f0912 desde el primer intento — no es un caso aislado, ni algo que la
+corrección de "Windows-Updates-w11 al final" (ver arriba) resuelva, porque
+ahí el mismatch no lo generó ninguna corrida de FS_APP_STN.
+
+Checklist para cuando esto pase:
+
+1. **Actualizar `RSAT-ActiveDirectory-Offline\`** con el `.cab` de la
+   capability `Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0` que
+   corresponda al build de la ISO nueva (ver "Qué colocar en
+   `RSAT-ActiveDirectory-Offline\`" más arriba para la lista completa de
+   archivos: paquete base + wow64 + idioma de Windows de los equipos de
+   Copa) — se saca de la MISMA ISO nueva, extraída, en
+   `sources\sxs\` o del paquete "Languages and Optional Features" que
+   corresponda a esa versión.
+2. **Revisar también `NetFX35\sources\sxs\`** (`app/netfx35_setup.py`):
+   usa el mismo mecanismo de DISM con fuente local, así que en principio
+   corre el mismo riesgo si el build cambia lo suficiente — aunque hasta
+   ahora no se ha reportado un caso real de 0x800f0912 con NetFX35, más
+   vale confirmarlo cuando cambien de ISO en vez de asumir que nunca va a
+   pasar.
+3. Si un equipo ya imageado con la ISO nueva vuelve a fallar con
+   0x800f0912 a pesar de haber actualizado el `.cab`, el mensaje de error
+   ahora reporta el `Image Version` real del equipo (ver arriba) — sirve
+   para confirmar rápido si el paquete que se actualizó de verdad coincide
+   con ese build, o si hace falta uno más nuevo todavía.
 
 ### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
 

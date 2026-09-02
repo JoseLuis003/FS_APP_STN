@@ -30,7 +30,8 @@ from __future__ import annotations
 
 import ntpath
 import subprocess
-import sys
+
+from app.reboot_pending import is_reboot_pending as _is_reboot_pending
 
 # DISM puede tardar varios minutos revisando/copiando los .cab, aunque
 # sean pocos MB -- mismo orden de magnitud que netfx35_setup.py.
@@ -63,39 +64,14 @@ class RsatSetupError(Exception):
     mensaje ya viene listo para mostrárselo tal cual al técnico."""
 
 
-def _is_reboot_pending() -> bool:
-    """Mismo chequeo que `app/netfx35_setup.py` (ver ahí el caso real de
-    campo que lo motivó) -- DISM usa el mismo almacén de componentes
-    (CBS) tanto para `/Enable-Feature` como para `/Add-Capability`, así
-    que corre el mismo riesgo de quedarse colgado hasta agotar
-    `_TIMEOUT_SECONDS` si el equipo quedó en reinicio pendiente, en vez
-    de fallar rápido con un mensaje claro."""
-    if sys.platform != "win32":
-        return False
-    import winreg
-
-    reboot_pending_keys = (
-        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
-        r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
-    )
-    for key_path in reboot_pending_keys:
-        try:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
-                return True
-        except OSError:
-            continue
-
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager"
-        ) as key:
-            value, _value_type = winreg.QueryValueEx(key, "PendingFileRenameOperations")
-            if value:
-                return True
-    except OSError:
-        pass
-
-    return False
+# `_is_reboot_pending()` (importado arriba desde `app/reboot_pending.py`,
+# compartido con `app/netfx35_setup.py` -- ver ahí el caso real de campo
+# que lo motivó, y ahora también usado por `app/ui/main_window.py` para
+# avisarle al técnico ANTES de intentar instalar): DISM usa el mismo
+# almacén de componentes (CBS) tanto para `/Enable-Feature` como para
+# `/Add-Capability`, así que corre el mismo riesgo de quedarse colgado
+# hasta agotar `_TIMEOUT_SECONDS` si el equipo quedó en reinicio
+# pendiente, en vez de fallar rápido con un mensaje claro.
 
 
 def _build_dism_command(installers_base_path: str) -> list[str]:

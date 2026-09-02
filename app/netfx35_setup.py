@@ -47,7 +47,8 @@ from __future__ import annotations
 
 import ntpath
 import subprocess
-import sys
+
+from app.reboot_pending import is_reboot_pending as _is_reboot_pending
 
 # Evita que Windows le abra su propia ventana de consola a `dism.exe`
 # (quedaría en blanco y parecería colgado) -- ver la explicación
@@ -87,62 +88,13 @@ class NetFx35SetupError(Exception):
 # componentes (CBS) hasta que ese reinicio se complete, así que se queda
 # esperando en vez de fallar rápido con un error claro.
 #
-# `_is_reboot_pending()` revisa los 3 indicadores estándar de Windows de
-# que hay un reinicio pendiente (cualquiera de los 3 alcanza) ANTES de
-# llamar a DISM, para fallar al instante con un mensaje claro en vez de
-# colgarse otra vez 10 minutos con el mismo resultado:
-#
-# - `...\\Component Based Servicing\\RebootPending`: existe SOLO si una
-#   operación de CBS (la misma que usa DISM para /Enable-Feature) dejó al
-#   equipo esperando un reinicio para completarse -- si esta clave existe,
-#   DISM se queda esperando el lock del CBS hasta que el equipo reinicia.
-# - `...\\WindowsUpdate\\Auto Update\\RebootRequired`: existe cuando
-#   Windows Update instaló algo que requiere reiniciar para terminar de
-#   aplicarse -- justo el caso real de arriba.
-# - `...\\Session Manager\\PendingFileRenameOperations`: un VALOR (no solo
-#   la existencia de la clave) con archivos pendientes de renombrar o
-#   borrar al reiniciar.
-#
-# Fuente: "Determine Pending Reboot Status -- PowerShell Style!"
-# (Microsoft Scripting Blog/DevBlogs), que documenta estos mismos 3
-# indicadores como la forma estándar de detectar un reinicio pendiente en
-# Windows: https://devblogs.microsoft.com/scripting/determine-pending-reboot-statuspowershell-style-part-1/
-_REBOOT_PENDING_KEY_CHECKS = (
-    (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending", None),
-    (r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired", None),
-)
-_PENDING_FILE_RENAME_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager"
-_PENDING_FILE_RENAME_VALUE = "PendingFileRenameOperations"
-
-
-def _is_reboot_pending() -> bool:
-    """Revisa si Windows quedó en "reinicio pendiente" (ver el comentario
-    de arriba) -- devuelve `False` sin lanzar nada fuera de Windows (no
-    hay `winreg`) o si no se pudo leer alguna de las claves por cualquier
-    motivo (mismo criterio conservador que el resto de la app para datos
-    "informativos" del equipo, ver `app/report.py`: mejor asumir que no
-    hay reinicio pendiente y dejar que DISM lo intente, que bloquear la
-    instalación por un error al leer el registro)."""
-    if sys.platform != "win32":
-        return False
-    import winreg
-
-    for key_path, _unused in _REBOOT_PENDING_KEY_CHECKS:
-        try:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
-                return True
-        except OSError:
-            continue
-
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _PENDING_FILE_RENAME_KEY) as key:
-            value, _value_type = winreg.QueryValueEx(key, _PENDING_FILE_RENAME_VALUE)
-            if value:
-                return True
-    except OSError:
-        pass
-
-    return False
+# `_is_reboot_pending()` (importado arriba desde `app/reboot_pending.py`,
+# que también usa `app/rsat_setup.py` y ahora también
+# `app/ui/main_window.py` para mostrarle un aviso al técnico ANTES de
+# intentar instalar -- ver ese módulo para el detalle completo de los 3
+# indicadores que revisa) se llama ANTES de invocar DISM, para fallar al
+# instante con un mensaje claro en vez de colgarse otra vez 10 minutos con
+# el mismo resultado.
 
 
 def _build_dism_command(installers_base_path: str) -> list[str]:

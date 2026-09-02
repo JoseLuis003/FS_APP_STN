@@ -55,6 +55,7 @@ from app.copa_id_setup import (
 )
 from app.installer import InstallLogger, InstallManager
 from app.installer_detect import detect_silent_args
+from app.reboot_pending import is_reboot_pending
 from app.report import REBOOT_PENDING_VERSION_LABEL, generate_report, is_reboot_pending_message
 from app.ui.catalog_widgets import build_checkbox_column, reapply_exclusive_constraints, wire_linked_groups
 
@@ -101,6 +102,24 @@ COPA_ID_ITEM_ID = "copa_id"
 # (ej. alguien corre el script a mano fuera de la app), `REG_AD.ps1` cae de
 # vuelta a `$env:USERNAME` como antes -- nunca falla por falta de este dato.
 REGISTRO_AD_ITEM_ID = "registro_ad"
+
+# Ítems que dependen de DISM para instalarse (ver `app/netfx35_setup.py` y
+# `app/rsat_setup.py`) y por lo tanto NO se pueden instalar mientras el
+# equipo esté en "reinicio pendiente" -- cada uno de ellos YA falla con un
+# mensaje claro si se intenta igual (ver `is_reboot_pending` en
+# `app/reboot_pending.py`), pero eso solo se nota DESPUÉS de marcarlos y
+# presionar INSTALAR. Pedido explícito de campo (reporte 2026-09-02, tras
+# un caso real donde estos 4 ítems fallaron en la misma corrida por esto):
+# un aviso ANTES, para que el técnico sepa que tiene que reiniciar primero
+# sin tener que intentarlo y enterarse por el mensaje de error de cada
+# uno. Ver `MainWindow._refresh_reboot_pending_banner`.
+#
+# "registro_ad" entra en esta lista aunque su instalador principal sea el
+# hotfix .msu: uno de sus 3 pasos (`extra_steps` en `config/apps.json`) ES
+# `rsat_ad_tools_setup` -- el mismo reporte de campo confirmó que también
+# falla en este estado, no solo el ítem "RSAT (Herramientas de Active
+# Directory)" standalone.
+REBOOT_PENDING_ITEM_IDS = ("netfx35", "rsat_ad_tools", "registro_ad", "bfirst")
 
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
@@ -775,6 +794,20 @@ class MainWindow(QMainWindow):
         self.owner_user_edit = self._build_owner_user_edit()
         inline_widgets = {COPA_ID_ITEM_ID: self.asset_tag_edit, REGISTRO_AD_ITEM_ID: self.owner_user_edit}
 
+        # Aviso de "reinicio pendiente" (ver REBOOT_PENDING_ITEM_IDS más
+        # arriba) -- arriba de todo, oculto por defecto; se decide si se
+        # muestra recién al final de `_build_ui()`, una vez que
+        # `self.checkboxes` ya tiene los ítems armados (ver
+        # `_refresh_reboot_pending_banner`).
+        self.reboot_pending_banner = QLabel()
+        self.reboot_pending_banner.setWordWrap(True)
+        self.reboot_pending_banner.setStyleSheet(
+            "background-color: #fdecea; color: #b03a2e; font-weight: 600; "
+            "padding: 8px; border: 1px solid #b03a2e; border-radius: 4px;"
+        )
+        self.reboot_pending_banner.setVisible(False)
+        root.addWidget(self.reboot_pending_banner)
+
         columns_row = QHBoxLayout()
         columns_row.setSpacing(30)
         for column in self.columns:
@@ -787,6 +820,10 @@ class MainWindow(QMainWindow):
         columns_row.addStretch(1)
         root.addLayout(columns_row)
         root.addStretch(1)
+
+        # Recién ahora `self.checkboxes` tiene los ítems armados -- ver
+        # `_refresh_reboot_pending_banner`.
+        self._refresh_reboot_pending_banner()
 
         status_row = QHBoxLayout()
         self.status_label = QLabel("Listo.")
@@ -808,6 +845,44 @@ class MainWindow(QMainWindow):
 
     def _build_column(self, column, inline_widgets: dict | None = None) -> QVBoxLayout:
         return build_checkbox_column(column, self.checkboxes, inline_widgets)
+
+    def _refresh_reboot_pending_banner(self) -> None:
+        """Muestra u oculta el aviso de "reinicio pendiente" de arriba de
+        todo, según el estado ACTUAL del equipo (ver `is_reboot_pending` en
+        `app/reboot_pending.py` y `REBOOT_PENDING_ITEM_IDS` más arriba).
+
+        Se llama al construir la pantalla (cubre tanto abrir APPS como
+        `_reload_catalog()`, que reconstruye todo vía `_build_ui()`) y
+        también después de CADA ítem de la cola (`_on_item_finished`) --
+        no solo al abrir la pantalla -- porque un reinicio pendiente puede
+        aparecer A MITAD de una corrida: caso real de campo (2026-09-02),
+        "Windows-Updates-w11" instaló actualizaciones de Windows y dejó el
+        equipo en ese estado DURANTE la misma corrida, antes de que le
+        tocara el turno a NetFX35/RSAT/REGISTRO EN AD/BFirst más adelante
+        en la cola. Revisar el registro es barato (3 lecturas), así que no
+        hay problema en hacerlo después de cada ítem."""
+        if not hasattr(self, "reboot_pending_banner"):
+            return
+        if not is_reboot_pending():
+            self.reboot_pending_banner.setVisible(False)
+            return
+        affected_labels = [
+            self.checkboxes[item_id][0].label
+            for item_id in REBOOT_PENDING_ITEM_IDS
+            if item_id in self.checkboxes
+        ]
+        if not affected_labels:
+            # El catálogo se personalizó desde AJUSTES y ya no tiene
+            # ninguno de estos ítems -- no hay nada que avisar.
+            self.reboot_pending_banner.setVisible(False)
+            return
+        self.reboot_pending_banner.setText(
+            "⚠ Reinicio de Windows pendiente: "
+            + ", ".join(affected_labels)
+            + " no se van a poder instalar hasta que reinicies el equipo. Reinicia y vuelve a "
+            "esta pantalla antes de marcarlos."
+        )
+        self.reboot_pending_banner.setVisible(True)
 
     def _build_asset_tag_edit(self) -> QLineEdit:
         """Construye el campo de texto de "Copa ID (Asset Tag)": solo
@@ -1152,6 +1227,12 @@ class MainWindow(QMainWindow):
             checkbox.setToolTip(f"Error: {message}")
         checkbox.style().unpolish(checkbox)
         checkbox.style().polish(checkbox)
+        # Reevalúa el aviso de reinicio pendiente después de CADA ítem, no
+        # solo al abrir la pantalla -- ver el docstring de
+        # `_refresh_reboot_pending_banner` para el caso real que lo pide
+        # (un paso anterior de la MISMA cola, ej. Windows-Updates-w11,
+        # puede dejar el reinicio pendiente recién ahora).
+        self._refresh_reboot_pending_banner()
 
     def _on_queue_finished(self) -> None:
         self._set_controls_enabled(True)

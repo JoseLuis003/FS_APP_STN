@@ -121,6 +121,37 @@ REGISTRO_AD_ITEM_ID = "registro_ad"
 # Directory)" standalone.
 REBOOT_PENDING_ITEM_IDS = ("netfx35", "rsat_ad_tools", "registro_ad", "bfirst")
 
+# Id del ítem "Windows-Updates-w11" (`Scripts/Install_WUSA.ps1`). Pedido
+# explícito de campo (2026-09-02, mismo día que el reporte de arriba):
+# este ítem SIEMPRE debe correr AL FINAL de la cola, sin importar en qué
+# columna/grupo del catálogo esté ubicado -- incluso si se personaliza el
+# catálogo desde AJUSTES (agregar/quitar aplicaciones puede reordenar
+# `self.checkboxes`, ver `_on_add_app`/`CatalogEditorDialog`).
+#
+# Motivo: una actualización de Windows real puede terminar A MITAD de la
+# cola y dejar el equipo con un reinicio pendiente, o -- caso real
+# confirmado en un log de campo del 2026-09-02, ver la sección de RSAT en
+# README.md -- con un build de Windows distinto al que esperan los .cab
+# de DISM (`app/rsat_setup.py`, `_SOURCE_MISMATCH_RETURNCODE`,
+# 0x800f0912), justo antes de que le toque el turno a ítems que dependen
+# de DISM (NetFX35, RSAT, BFirst) más adelante en esa misma corrida. Ya
+# había pasado antes, documentado en `app/netfx35_setup.py` (caso real del
+# 2026-08-19): "Windows-Updates-w11" terminó apenas 15 segundos antes de
+# que a BFirst le tocara correr DISM, y se quedó colgado 10 minutos hasta
+# el timeout.
+#
+# No hay forma de evitar el problema de raíz sin dejar de instalar
+# actualizaciones de Windows -- pero si "Windows-Updates-w11" es SIEMPRE
+# lo último que se instala, cualquier reinicio pendiente o cambio de
+# build que deje a mitad de camino ya no afecta a ningún otro ítem de esa
+# misma corrida (a lo sumo, deja al PROPIO equipo con un reinicio
+# pendiente para la corrida SIGUIENTE, que sí se detecta de entrada
+# gracias al aviso de `_refresh_reboot_pending_banner`). Ver `_on_installar`,
+# donde se saca este ítem de su posición natural en `selected` y se lo
+# vuelve a agregar al final, sin importar dónde haya quedado insertado en
+# `self.checkboxes`.
+WINDOWS_UPDATES_ITEM_ID = "windows_updates"
+
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
     "bginfo",
@@ -1054,6 +1085,18 @@ class MainWindow(QMainWindow):
         if not selected:
             QMessageBox.warning(self, "Instalar", "No hay ninguna aplicación seleccionada.")
             return
+
+        # "Windows-Updates-w11" SIEMPRE al final de la cola, sin importar en
+        # qué posición del catálogo haya quedado insertado en
+        # `self.checkboxes` -- ver el docstring de `WINDOWS_UPDATES_ITEM_ID`
+        # para el caso real de campo que lo motivó. Se lo saca de donde haya
+        # caído en `selected` y se lo vuelve a agregar al final, en vez de
+        # depender de su posición en `config/apps.json` (que un catálogo
+        # personalizado desde AJUSTES podría cambiar).
+        windows_updates_entry = self.checkboxes.get(WINDOWS_UPDATES_ITEM_ID)
+        if windows_updates_entry is not None and windows_updates_entry[0] in selected:
+            windows_updates_item = windows_updates_entry[0]
+            selected = [it for it in selected if it is not windows_updates_item] + [windows_updates_item]
 
         # "Copa ID (Asset Tag)" no es un instalador tradicional: se saca de
         # la cola normal y se aplica aparte, con el valor que haya en

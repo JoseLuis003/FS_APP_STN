@@ -388,6 +388,39 @@ en `app/report.py` detecta el mensaje por contener las palabras
 "reinicio" y "pendiente", así que este caso y el de SAP GUI se
 distinguen igual en el reporte con el mismo mecanismo).
 
+#### Corrección de fondo (2026-09-02, pedido explícito de campo): "Windows-Updates-w11" ahora corre SIEMPRE al final
+
+El problema de arriba (2026-08-19) y el de build de Windows distinto que
+documenta la sección de RSAT más abajo (0x800f0912, 2026-09-02) comparten
+la misma causa raíz: **"Windows-Updates-w11" corría en medio de la cola**
+(en el catálogo, antes que NetFX35/RSAT/REGISTRO EN AD/BFirst, todos ellos
+en columnas posteriores), así que una actualización de Windows real podía
+terminar de aplicarse a mitad de una misma corrida y dejar al equipo con
+reinicio pendiente, o con un build de Windows distinto al que esperaban
+los `.cab` de DISM, justo antes de que le tocara el turno a esos ítems más
+adelante en esa misma corrida.
+
+En vez de mover el ítem dentro de `config/apps.json` (frágil: un catálogo
+personalizado desde AJUSTES, ver "Agregar aplicación" más abajo, podría
+agregar un ítem nuevo después y volver a dejarlo en el medio),
+`MainWindow._on_installar()` (`app/ui/main_window.py`) ahora saca
+explícitamente el ítem `windows_updates` de donde haya caído en la lista
+de seleccionados y lo vuelve a agregar al final, sin importar en qué
+posición del catálogo esté insertado en `self.checkboxes` — ver
+`WINDOWS_UPDATES_ITEM_ID` para el detalle completo. Esto no evita que
+Windows Update dañe SU PROPIA corrida (a lo sumo deja el equipo con
+reinicio pendiente para la corrida siguiente, que ya se detecta de
+entrada gracias al aviso de "reinicio pendiente" de más arriba), pero
+garantiza que ningún otro ítem de esa misma corrida — en especial los que
+dependen de DISM — quede expuesto a un cambio de estado de Windows a
+mitad de camino.
+
+`test_windows_updates_last.py` prueba esto explícitamente: confirma la
+premisa (que "windows_updates" se inserta ANTES que "netfx35" en el orden
+natural del catálogo) y que, aun así, termina último en la cola pasada a
+`InstallManager.start()`, tanto si se seleccionan otros ítems junto con
+él como si se selecciona solo o no se selecciona en absoluto.
+
 ### RSAT: Herramientas de Active Directory (`app/rsat_setup.py`)
 
 Ítem independiente del catálogo (2da columna, junto a "REGISTRO EN AD"),

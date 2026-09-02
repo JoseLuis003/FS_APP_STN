@@ -30,21 +30,74 @@ param(
 #
 # Imprime RESULT_OK si todo salio bien (agregar un grupo que ya era miembro
 # NO se trata como error), o RESULT_ERROR: <detalle> si algo fallo.
+#
+# IMPORTANTE (bug real de campo, reporte 2026-09-02): `Add-LocalGroupMember`
+# (cmdlet del modulo Microsoft.PowerShell.LocalAccounts) tiene un bug
+# real y ampliamente reportado -- ver el issue "Add-LocalGroupMember
+# fails when adding an AD group" en el repo de PowerShell en GitHub --
+# que hace que falle con "Object reference not set to an instance of an
+# object" (NullReferenceException DENTRO del cmdlet, no un problema de
+# credenciales, de nombre mal escrito, ni de permisos) específicamente
+# al agregar un GRUPO de dominio como -Member. Agregar un USUARIO de
+# dominio con el mismo cmdlet SI funciona -- el bug es solo para grupos,
+# que es exactamente el caso de los 3 `LOCAL_ADMIN_GROUPS`
+# (`app/domain_join.py`), todos grupos "GRP-...", nunca usuarios.
+#
+# Se evita el cmdlet roto por completo y se usa el proveedor ADSI WinNT
+# directamente (`[ADSI]"WinNT://..."`) -- una API mas vieja y de mas bajo
+# nivel que Microsoft.PowerShell.LocalAccounts, sin este bug, y el mismo
+# mecanismo que usaba el script original de este proceso
+# (`DomainJoined.ps1`) antes de que existiera `Add-LocalGroupMember`.
 
 $ErrorActionPreference = "Stop"
 $errors = @()
 $groupList = $AdminGroups -split "," | Where-Object { $_ }
 
-foreach ($group in $groupList) {
-    try {
-        Add-LocalGroupMember -Group "Administrators" -Member $group -ErrorAction Stop
+# Se comprueba membresia actual por nombre (no por SID) leyendo
+# directamente los miembros del grupo local Administrators via ADSI, en
+# vez de intentar agregar y atrapar el error de "ya es miembro" -- ese
+# error de ADSI viene como un HRESULT/COMException cuyo texto varia
+# segun el idioma de Windows del equipo, así que comparar por nombre de
+# antemano es mas confiable que intentar reconocer el mensaje de error.
+function Test-IsLocalGroupMember {
+    param(
+        [Parameter(Mandatory = $true)]$LocalGroupAdsi,
+        [Parameter(Mandatory = $true)][string]$MemberName
+    )
+    foreach ($member in $LocalGroupAdsi.psbase.Invoke("Members")) {
+        $existingName = $member.GetType().InvokeMember("Name", "GetProperty", $null, $member, $null)
+        if ($existingName -eq $MemberName) { return $true }
     }
-    catch {
-        # "ya es miembro del grupo" no es un error real: el objetivo (que el
-        # grupo tenga permisos de administrador local) ya esta cumplido.
-        if ($_.Exception.Message -match "already a member" -or $_.CategoryInfo.Reason -eq "MemberExistsException") {
+    return $false
+}
+
+$localAdmins = [ADSI]"WinNT://./Administrators,group"
+
+foreach ($group in $groupList) {
+    $group = $group.Trim()
+    if (-not $group) { continue }
+
+    # Los grupos vienen como "DOMINIO\Nombre del grupo" (ver
+    # LOCAL_ADMIN_GROUPS en app/domain_join.py) -- el proveedor WinNT
+    # arma la ruta con "/" en vez de "\" (`WinNT://DOMINIO/Nombre`), asi
+    # que hay que separar ambas partes primero.
+    $parts = $group -split "\\", 2
+    if ($parts.Count -ne 2) {
+        $errors += "No se pudo agregar '$group' a Administrators: se esperaba el formato DOMINIO\Grupo"
+        continue
+    }
+    $domainName, $groupName = $parts
+
+    try {
+        if (Test-IsLocalGroupMember -LocalGroupAdsi $localAdmins -MemberName $groupName) {
+            # ya es miembro -- el objetivo (que el grupo tenga permisos de
+            # administrador local) ya esta cumplido, no es un error real.
             continue
         }
+        $domainGroup = [ADSI]"WinNT://$domainName/$groupName,group"
+        $localAdmins.Add($domainGroup.Path)
+    }
+    catch {
         $errors += "No se pudo agregar '$group' a Administrators: $($_.Exception.Message)"
     }
 }

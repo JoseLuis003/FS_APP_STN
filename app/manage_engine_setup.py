@@ -92,32 +92,47 @@ class ManageEngineSetupError(Exception):
     mostrárselo tal cual al técnico."""
 
 
-def _build_msiexec_command(source_dir: str, log_path: str) -> list[str]:
+def _build_msiexec_command(source_dir: str, log_path: str) -> str:
     # `ntpath.join` (no `pathlib.Path`) a propósito -- mismo motivo que
     # `netfx35_setup.py`/`rsat_setup.py`: `installers_base_path` es una
     # ruta de Windows aunque esto se desarrolle y pruebe en Linux/Mac.
     msi_path = ntpath.join(source_dir, _MSI_FILE_NAME)
     server_crt_path = ntpath.join(source_dir, _SERVER_CRT_FILE_NAME)
     ds_crt_path = ntpath.join(source_dir, _DS_CRT_FILE_NAME)
-    return [
-        "msiexec.exe",
-        "/I", msi_path,
+
+    # BUG REAL DE CAMPO (reporte 2026-09-02, msiexec código 1639 = "Invalid
+    # command line argument"): la primera versión de este módulo armaba el
+    # comando como una LISTA de argumentos sueltos (`["msiexec.exe", "/I",
+    # msi_path, f"SERVER_ROOT_CRT={server_crt_path}", ...]`), confiando en
+    # que `subprocess.run` (vía `list2cmdline` en Windows) encomillaría
+    # cada elemento que tuviera espacios -- pero eso encomilla la CADENA
+    # COMPLETA de cada elemento ("SERVER_ROOT_CRT=C:\CM APPS\..." con la
+    # comilla ANTES de "SERVER_ROOT_CRT"), mientras que `msiexec.exe` usa
+    # su PROPIO parser de línea de comandos (no el estándar de Windows) que
+    # exige la comilla solo alrededor del VALOR: `SERVER_ROOT_CRT="C:\CM
+    # APPS\..."` -- exactamente como lo armaba el `.ps1` original. Con la
+    # forma "de lista" el parser de `msiexec` no reconocía la propiedad y
+    # fallaba con 1639 apenas alguna ruta (siempre las hay: "CM APPS" tiene
+    # espacio) quedaba con la comilla en el lugar equivocado.
+    #
+    # La corrección: armar el comando como UNA sola cadena, con la MISMA
+    # forma de encomillado que el `.ps1` original (comilla solo alrededor
+    # de cada valor), y pasarla tal cual a `subprocess.run` -- en Windows,
+    # si `args` ya es un `str`, Python lo entrega literal a `CreateProcess`
+    # sin volver a encomillarlo (ver `_execute_child` en la librería
+    # estándar `subprocess`: `if isinstance(args, str): pass`), así que el
+    # comando que arma esta función es EXACTAMENTE el que ve `msiexec`, sin
+    # reinterpretación de por medio.
+    return (
+        f'msiexec.exe /I "{msi_path}" '
         # `TRANSFORMS` se deja como nombre de archivo SUELTO (sin ruta),
         # igual que el .ps1 original -- Windows Installer lo resuelve
-        # relativo a la carpeta del propio .msi automáticamente. Cada
-        # elemento de esta lista es un argumento aparte (no una sola
-        # cadena armada a mano), así que no hace falta encomillar nada
-        # por más que las rutas tengan espacios (a diferencia del
-        # `-ArgumentList` de una sola cadena que usaba `Start-Process`).
-        f"TRANSFORMS={_TRANSFORM_FILE_NAME}",
-        "ENABLESILENT=yes",
-        "/passive",
-        "REBOOT=ReallySuppress",
-        "INSTALLSOURCE=Manual",
-        f"SERVER_ROOT_CRT={server_crt_path}",
-        f"DS_ROOT_CRT={ds_crt_path}",
-        "/lv", log_path,
-    ]
+        # relativo a la carpeta del propio .msi automáticamente.
+        f'TRANSFORMS="{_TRANSFORM_FILE_NAME}" '
+        'ENABLESILENT=yes /passive REBOOT=ReallySuppress INSTALLSOURCE=Manual '
+        f'SERVER_ROOT_CRT="{server_crt_path}" DS_ROOT_CRT="{ds_crt_path}" '
+        f'/lv "{log_path}"'
+    )
 
 
 def _run_msiexec(source_dir: str, log_path: str) -> int:

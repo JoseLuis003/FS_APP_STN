@@ -445,12 +445,66 @@ Alcanza con copiar de esa ISO extraída:
   "el origen no se encontró" aunque el paquete base sí esté.
 
 Mismo chequeo de "reinicio pendiente" que `netfx35_setup.py`
-(`_is_reboot_pending()`, duplicado en este módulo): DISM usa el mismo
-almacén de componentes (CBS) tanto para `/Enable-Feature` como para
-`/Add-Capability`, así que corre el mismo riesgo de quedarse colgado
-hasta agotar el timeout si el equipo quedó en reinicio pendiente — se
-revisa ANTES de llamar a DISM para fallar rápido con un mensaje claro en
-vez de colgarse.
+(`is_reboot_pending()`, extraído a un módulo compartido,
+`app/reboot_pending.py` — ver "Aviso proactivo de reinicio pendiente" más
+abajo): DISM usa el mismo almacén de componentes (CBS) tanto para
+`/Enable-Feature` como para `/Add-Capability`, así que corre el mismo
+riesgo de quedarse colgado hasta agotar el timeout si el equipo quedó en
+reinicio pendiente — se revisa ANTES de llamar a DISM para fallar rápido
+con un mensaje claro en vez de colgarse.
+
+#### Problema real de campo: error 0x800f0912 por build de Windows distinto (2026-09-02)
+
+Detectado en un log de instalación real: en la MISMA corrida, "REGISTRO EN
+AD" (paso 2/3, `rsat_ad_tools_setup`) y el ítem independiente "RSAT"
+fallaron con:
+
+```
+No se pudo instalar RSAT (AD DS/LDS Tools) (DISM terminó con código 2148469010) --
+...
+Version: 10.0.26100.8972
+Image Version: 10.0.26200.9278
+Error: 0x800f0912
+The source files could not be found using available local sources.
+```
+
+`2148469010` es `0x800f0912` como entero con signo (lo que reportan tanto
+DISM como `subprocess` en Python) — el error estándar de Microsoft "The
+source files could not be found using available local sources". La causa
+NO es que falte el archivo (el `.cab` sí estaba en
+`RSAT-ActiveDirectory-Offline\`, como en cualquier otra corrida exitosa):
+DISM imprime dos versiones distintas en su propia salida, `Version`
+(el build del propio `dism.exe`) e `Image Version` (el build REAL de
+Windows que está corriendo en el equipo), y en este log NO coinciden —
+`10.0.26100.8972` contra `10.0.26200.9278`. Cuando el build de Windows del
+equipo no coincide con el build para el que está empaquetado el `.cab`
+(su manifiesto interno lo declara), DISM lo descarta como fuente válida
+aunque el archivo exista en el disco.
+
+La hipótesis más probable, a partir de este mismo log: "Windows-Updates-w11"
+corre ANTES en la misma cola de instalación y en esta corrida sí instaló
+actualizaciones reales — pudo haber subido el build de Windows del equipo
+a último momento, dejando al `.cab` de RSAT (empaquetado para el build
+anterior) desactualizado para ese mismo equipo, en la misma sesión de
+instalación.
+
+**Esto es un problema de contenido/medio (el paquete `.cab` de
+`RSAT-ActiveDirectory-Offline\`), no un bug de este código** — ningún
+cambio en `rsat_setup.py` puede hacer que DISM acepte un `.cab`
+empaquetado para un build distinto al que ya quedó instalado. Lo único
+que se agregó es diagnóstico: `ensure_rsat_ad_tools_installed()` detecta
+específicamente el código `0x800f0912` (`_SOURCE_MISMATCH_RETURNCODE`),
+extrae la línea "Image Version" de la salida real de DISM
+(`_extract_image_version()`) y arma el mensaje de error explicando esta
+causa y citando el build real del equipo — para que la próxima vez que
+pase, el técnico no tenga que interpretar el 0x800f0912 a mano ni
+adivinar por qué "el archivo que sí está ahí" no sirve. La solución de
+fondo, cuando vuelva a pasar, es conseguir un paquete
+`RSAT-ActiveDirectory-Offline\` actualizado para el build de Windows que
+haya quedado en el equipo (y, por separado, vale la pena confirmar si
+conviene que "Windows-Updates-w11" no corra justo antes de RSAT en la
+misma cola, ya que fue lo que aparentemente cambió el build a mitad de
+instalación en este caso real).
 
 ### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
 

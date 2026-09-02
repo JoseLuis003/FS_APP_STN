@@ -29,6 +29,7 @@ idioma de Windows de los equipos de Copa."""
 from __future__ import annotations
 
 import ntpath
+import re
 import subprocess
 
 from app.reboot_pending import is_reboot_pending as _is_reboot_pending
@@ -57,6 +58,38 @@ _CAPABILITY_NAME = "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0"
 # tener (NO la carpeta completa de 5GB del ISO "Languages and Optional
 # Features", solo el paquete base + los idiomas necesarios).
 _SOURCE_SUBPATH_PARTS = ("RSAT-ActiveDirectory-Offline",)
+
+# Código de salida 0x800f0912 ("The source files could not be found using
+# available local sources") -- reporte real de campo (2026-09-02): este
+# equipo tenía Windows recién actualizado (el paso "Windows-Updates-w11"
+# corre ANTES en la misma cola) y DISM mostró "Version: 10.0.26100.8972"
+# (el propio DISM) vs "Image Version: 10.0.26200.9278" (el Windows que en
+# realidad está corriendo en el equipo) -- build 26100 contra build 26200,
+# ya NO son el mismo build. Esto confirma la causa más común y documentada
+# de este código puntual: los .cab de `RSAT-ActiveDirectory-Offline`
+# están empaquetados para un build de Windows distinto al que quedó
+# instalado en el equipo (probablemente porque una actualización de
+# Windows -- corrida por este mismo instalador segundos antes -- subió el
+# build a último momento), así que DISM no los reconoce como fuente
+# válida aunque el archivo exista en el disco -- no es que falte el
+# archivo, es que su manifiesto interno declara un build que ya no
+# coincide. Es un problema de LOS ARCHIVOS DE ORIGEN (contenido de la
+# USB), no del código de este módulo -- no hay nada que este script pueda
+# hacer para "arreglarlo" solo, pero si el mensaje de error ya apunta a
+# esto de entrada, el técnico no tiene que ir a buscar/interpretar el
+# 0x800f0912 a mano cada vez que vuelva a pasar.
+_SOURCE_MISMATCH_RETURNCODE = 2148469010  # 0x800f0912, como entero (DISM/Python lo reportan así)
+_IMAGE_VERSION_RE = re.compile(r"Image Version:\s*([\d.]+)")
+
+
+def _extract_image_version(text: str) -> str | None:
+    """Busca la línea "Image Version: X.X.XXXXX.XXXX" que DISM imprime en
+    su propio stdout -- es el build REAL de Windows que está corriendo en
+    el equipo (a diferencia de la línea "Version:", que es el build del
+    propio `dism.exe`). Devuelve `None` si no aparece (ej. un fallo
+    distinto que corta antes de que DISM llegue a imprimir esa línea)."""
+    match = _IMAGE_VERSION_RE.search(text or "")
+    return match.group(1) if match else None
 
 
 class RsatSetupError(Exception):
@@ -132,6 +165,23 @@ def ensure_rsat_ad_tools_installed(installers_base_path: str) -> str:
         msg = f"No se pudo instalar RSAT (AD DS/LDS Tools) (DISM terminó con código {result.returncode})"
         if detail:
             msg += f" -- {detail}"
+        if result.returncode == _SOURCE_MISMATCH_RETURNCODE:
+            # Ver `_SOURCE_MISMATCH_RETURNCODE` arriba para el caso real de
+            # campo -- se busca en el texto COMPLETO (no en `detail`, ya
+            # truncado a 500 caracteres) por si la línea "Image Version"
+            # quedara más allá de ese límite en algún log futuro.
+            full_output = f"{result.stdout or ''}\n{result.stderr or ''}"
+            image_version = _extract_image_version(full_output)
+            note = (
+                "los archivos de origen (.cab) en RSAT-ActiveDirectory-Offline probablemente NO "
+                "corresponden al build de Windows de este equipo -- no es que falta el archivo, es "
+                "que su build no coincide con el de Windows ya instalado (posible causa: una "
+                "actualización de Windows corrida antes en la misma instalación subió el build). "
+                "Hace falta un paquete RSAT-ActiveDirectory-Offline actualizado para ese build."
+            )
+            if image_version:
+                note += f" Este equipo reporta Image Version {image_version}."
+            msg += f" -- {note}"
         raise RsatSetupError(msg)
 
     if result.returncode == 3010:

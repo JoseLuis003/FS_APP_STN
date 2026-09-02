@@ -566,14 +566,17 @@ El ítem `sap_gui` tiene 5 pasos: `vstor_redist.exe` (principal),
 `NwSapSetup.exe`, el parche `GUI800_4-80006341.EXE`, `SAPSetupSLC.exe`, y
 por último `sap_gui_setup` (`installer_type: "python"`, ver más abajo).
 
-**Revisado: se quitaron los switches de instalación desatendida de los 4
-pasos `.exe`** — reporte real de campo: "SAP GUI 7.8" seguía fallando
-incluso después de reiniciar el equipo y reintentar (ver el problema
-conocido 144/145 más abajo -- este era un fallo DISTINTO, silencioso,
-sin ningún detalle útil en stdout/stderr por venir de un instalador
-corriendo sin interfaz). Se quitó únicamente
-la parte de cada switch que suprime la interfaz del instalador -- no
-cualquier parámetro:
+**Historial: se quitaron los switches de instalación desatendida de los 4
+pasos `.exe` (revisión anterior), y se volvieron a agregar más tarde
+(2026-09-02, pedido explícito de campo) ahora que las 2 razones que
+motivaron quitarlos ya no aplican.** Esto es lo que pasó, en orden:
+
+Primero (revisión anterior): reporte real de campo -- "SAP GUI 7.8"
+seguía fallando incluso después de reiniciar el equipo y reintentar (ver
+el problema conocido 144/145 más abajo -- este era un fallo DISTINTO,
+silencioso, sin ningún detalle útil en stdout/stderr por venir de un
+instalador corriendo sin interfaz). Se quitó únicamente la parte de cada
+switch que suprime la interfaz del instalador -- no cualquier parámetro:
 
 - `vstor_redist.exe`: `/passive /norestart` -> `/norestart` (se quita
   `/passive`, que ocultaba la interfaz; se mantiene `/norestart`, que no
@@ -587,13 +590,60 @@ cualquier parámetro:
   otra cosa más que ocultar la interfaz).
 - `SAPSetupSLC.exe`: `/noDLG` -> "" (mismo caso).
 
-Con esto, el técnico ve el instalador real de SAP GUI en pantalla (como
+Con esto, el técnico veía el instalador real de SAP GUI en pantalla (como
 ya pasa con DELL Optimizer/DELL OwnerTag, ver más arriba) en vez de un
-fallo silencioso sin ningún detalle -- puede ver en qué paso concreto se
+fallo silencioso sin ningún detalle -- podía ver en qué paso concreto se
 traba o qué error puntual muestra SAP, algo que un instalador sin
-interfaz nunca reporta por `stdout`/`stderr`. Como contrapartida, corre
-menos "desatendido" que antes: el técnico tiene que ir haciendo clic en
+interfaz nunca reporta por `stdout`/`stderr`. Como contrapartida, corría
+menos "desatendido" que antes: el técnico tenía que ir haciendo clic en
 los diálogos de cada instalador para que avance.
+
+**Revertido (2026-09-02, pedido explícito de campo): se volvió a agregar
+instalación silenciosa a los 4 pasos `.exe`, ahora sí manteniendo visible
+la barra de progreso PROPIA de SAP** -- las 2 razones que motivaron
+quitar los switches arriba ya no aplican:
+
+1. La pérdida de detalle en stdout/stderr al fallar en silencio: desde
+   entonces, `InstallWorker.run()` captura stdout/stderr en TODOS los
+   pasos también cuando terminan con éxito (antes solo se capturaba en
+   la rama de fallo) -- así que, aunque un paso corra sin interfaz, su
+   salida real igual queda en `logs/`.
+2. Que un fallo cortara la secuencia antes de llegar al parche/
+   `SAPSetupSLC.exe`: ya resuelto por el fix de `continue_on_error` (ver
+   el problema 144/145 más abajo) -- un paso que falla ya no frena a los
+   siguientes.
+
+Los switches nuevos NO son los mismos `/passive`/`/NoDlg`/`/noDLG` de
+antes -- se investigó cuál era el switch correcto para que ÚNICAMENTE
+la barra de progreso propia de SAP quede visible (pedido explícito), sin
+volver a mostrar el instalador completo interactivo:
+
+- `vstor_redist.exe` (bootstrapper de Microsoft VC++/VSTOR, NO es parte
+  de "la aplicación de SAP" en sí): `/norestart` -> `/q /norestart` --
+  `/q` es el switch estándar y bien documentado de este tipo de
+  bootstrapper para instalación completamente silenciosa (sin ninguna
+  ventana), a diferencia de `/passive` (que muestra su propia barra de
+  progreso -- se descarta a propósito para que la ÚNICA barra de
+  progreso visible durante todo el ítem sea la de SAP, no una de
+  Microsoft y otra de SAP a la vez).
+- `NwSapSetup.exe`: `/product=SAPGUI` -> `/silent /product=SAPGUI` --
+  `/silent` es el modo "desatendido" documentado de SAP para su propio
+  instalador: sin diálogos ni intervención del técnico, pero SÍ muestra
+  una ventana con la barra de progreso propia de SAP (a diferencia de
+  `/NoDlg`, que oculta la interfaz por completo) -- exactamente el
+  comportamiento pedido.
+- `GUI800_4-80006341.EXE` (parche) y `SAPSetupSLC.exe`: `""` -> `/silent`
+  en los dos -- se asume el mismo motor de instalación de SAP que
+  `NwSapSetup.exe` (viven en la misma carpeta del paquete y comparten el
+  mismo origen), así que deberían aceptar el mismo switch con el mismo
+  comportamiento. **Confianza menor que con `NwSapSetup.exe`** -- a
+  diferencia de ese paso (documentado explícitamente en la guía de
+  instalación de SAP GUI) y de `vstor_redist.exe` (bootstrapper genérico
+  de Microsoft, ampliamente documentado), no hay una fuente oficial que
+  confirme el comportamiento exacto de `/silent` específicamente para
+  estos 2 archivos -- si en la práctica alguno de los 2 sigue mostrando
+  su propia interfaz (o falla por un switch no reconocido), avisar para
+  ajustarlo puntualmente.
 
 **Problema conocido: código de salida 144/145 en el paso 2
 (`NwSapSetup.exe`)** — reportado en una prueba real de campo:

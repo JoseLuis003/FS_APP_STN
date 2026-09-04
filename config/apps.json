@@ -5,7 +5,7 @@
       "groups": [
         {
           "items": [
-            { "id": "bginfo",            "label": "BGInfo",                    "installer": "BGinfo/BGTool.exe",            "silent_args": "/accepteula",                     "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D",
+            { "id": "bginfo",            "label": "BGInfo",                    "installer": "BGinfo/BGTool.exe",            "silent_args": "/accepteula",                     "installer_type": "exe", "default_checked": false, "enabled": true, "version": "4.25.0.0",
               "extra_steps": [ { "installer": "bginfo_registration", "silent_args": "", "installer_type": "python" } ] },
             { "id": "dell_command",      "label": "DELL Command Update",       "installer": "dotnet_desktop_runtime_setup", "silent_args": "", "installer_type": "python", "default_checked": false, "enabled": true, "version": "5.7.1",
               "extra_steps": [
@@ -16,10 +16,10 @@
             { "id": "copa_id",           "label": "Copa ID (Asset Tag)",       "installer": "",                             "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "key_fn_mode",       "label": "KEY FN Mode - LAPTOP",      "installer": "FNLockMode/FNLockMode_x64.exe","silent_args": "/s",                              "installer_type": "exe", "default_checked": false, "enabled": true, "version": "1.0" },
             { "id": "adobe_reader",      "label": "Adobe Reader",              "installer": "AdobeReader/AcroRdrDC2600121771_en_US.exe", "silent_args": "/sPB",               "installer_type": "exe", "default_checked": false, "enabled": true, "version": "2026.001.21771" },
-            { "id": "forcepoint",        "label": "NetSkopeClient",            "installer": "NetSkopeClient/Install_NSK.bat","silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "crowdstrike",       "label": "Crowdstrike",               "installer": "Crowdstrike/WindowsSensor.exe","silent_args": "/install /passive /norestart CID=A51E4A84E9B3404B9AC8B70A1A8B7E8E-74", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "forcepoint",        "label": "NetSkopeClient",            "installer": "NetSkopeClient/Install_NSK.bat","silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "130.0.0.2504" },
+            { "id": "crowdstrike",       "label": "Crowdstrike",               "installer": "Crowdstrike/WindowsSensor.exe","silent_args": "/install /passive /norestart CID=A51E4A84E9B3404B9AC8B70A1A8B7E8E-74", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.40.21306.0" },
             { "id": "google_chrome",     "label": "Google Chrome",             "installer": "Google Chrome/googlechromestandaloneenterprise64.msi", "silent_args": "/passive", "installer_type": "msi", "default_checked": false, "enabled": true, "version": "151.0.7922.109" },
-            { "id": "ms_teams_work",     "label": "Microsoft Teams",           "installer": "Microsoft Teams/Install.bat",  "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "ms_teams_work",     "label": "Microsoft Teams",           "installer": "Microsoft Teams/Install.bat",  "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "26213.1006.5014.9784" },
             { "id": "windows_updates",   "label": "Windows-Updates-w11",       "installer": "WUSA/Install_WUSA.ps1",        "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D", "timeout_seconds": 3600 }
           ]
         }
@@ -41,19 +41,19 @@
             { "id": "rsat_ad_tools",    "label": "RSAT (Herramientas de Active Directory)", "installer": "rsat_ad_tools_setup", "silent_args": "",              "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D", "linked_group": "rsat_ad" },
             { "id": "shortcuts",        "label": "Shortcuts",                 "installer": "stn_shortcuts",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D",
               "extra_steps": [ { "installer": "server_access_shortcut", "silent_args": "", "installer_type": "python" } ] },
-            { "id": "manage_engine",    "label": "Manage Engine",             "installer": "manage_engine_setup",          "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
+            { "id": "manage_engine",    "label": "Manage Engine",             "installer": "manage_engine_setup",          "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "11.5.2622.13W" },
             { "id": "windows_activation","label": "Activar Windows",          "installer": "windows_activation",           "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "microsoft_office_365", "label": "Microsoft Office 365",  "installer": "ODT/setup.exe",                "silent_args": "/configure configuration.xml",    "installer_type": "exe",    "default_checked": false, "enabled": true, "version": "16.0.20326.20112" }
           ]
         },
         {
           "items": [
-            { "id": "bfirst",           "label": "BFirst",                    "installer": "netfx35_setup",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "N/D",
+            { "id": "bfirst",           "label": "BFirst",                    "installer": "netfx35_setup",                "silent_args": "",                                "installer_type": "python", "default_checked": false, "enabled": true, "version": "1.1.2",
               "extra_steps": [
                 { "installer": "BFirst/setupbolapp.exe", "silent_args": "/S /v/qn", "installer_type": "exe" },
                 { "installer": "bfirst_assets", "silent_args": "", "installer_type": "python" }
               ] },
-            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "sap_gui_reboot_check", "silent_args": "",       "installer_type": "python", "default_checked": false, "enabled": true, "version": "7.8",
+            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "sap_gui_reboot_check", "silent_args": "",       "installer_type": "python", "default_checked": false, "enabled": true, "version": "8.00",
               "extra_steps": [
                 { "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/q /norestart", "installer_type": "exe" },
                 { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/silent /product=SAPGUI", "installer_type": "exe", "continue_on_error": true,

@@ -161,6 +161,35 @@ REBOOT_PENDING_ITEM_IDS = ("netfx35", "rsat_ad_tools", "registro_ad", "bfirst", 
 # `self.checkboxes`.
 WINDOWS_UPDATES_ITEM_ID = "windows_updates"
 
+# Ítems que deben instalarse DESPUÉS de "Windows-Updates-w11" (en este
+# orden) -- pedido explícito de campo (2026-09-04): NetSkopeClient (id
+# "forcepoint"), Crowdstrike y Manage Engine. Los 3 son agentes de
+# seguridad/administración remota con ganchos propios a nivel de red o
+# controlador -- instalarlos DESPUÉS de que Windows ya haya terminado de
+# actualizarse evita que uno de ellos (en particular NetSkope/Crowdstrike,
+# que interceptan tráfico de red) interfiera con la descarga/instalación
+# de las actualizaciones de Windows en sí. Solo se mueven al final si
+# "Windows-Updates-w11" TAMBIÉN está seleccionado en esa corrida -- ver
+# `_on_installar` -- si no, no hay nada de qué quedar "después" y se
+# instalan en su posición normal del catálogo.
+ITEMS_AFTER_WINDOWS_UPDATES = ("forcepoint", "crowdstrike", "manage_engine")
+
+# Id del ítem "NetFX35" (independiente del catálogo, no el paso
+# `netfx35_setup` que corre dentro de BFirst). Pedido explícito de campo
+# (2026-09-04): si está seleccionado, debe correr SIEMPRE de PRIMERO,
+# antes que cualquier otro ítem de la cola -- varios pasos de otros ítems
+# (BFirst, y en general cualquier cosa que dependa de tener .NET Framework
+# 3.5 disponible) se benefician de que esto quede resuelto (o de que un
+# reinicio pendiente se detecte) lo antes posible en la corrida, en vez de
+# a mitad de camino. `ensure_netfx35_installed()` (`app/netfx35_setup.py`)
+# ya es idempotente -- si .NET 3.5 ya estaba habilitado, correrlo de
+# primero de todos modos no cuesta nada extra (reporta "ya estaba
+# habilitado" y sigue la cola normal) -- así que no hace falta consultarle
+# a DISM de antemano si hace falta o no: se reordena siempre que esté
+# seleccionado, sin excepción, mismo criterio que
+# `WINDOWS_UPDATES_ITEM_ID` de arriba.
+NETFX35_ITEM_ID = "netfx35"
+
 # Preset del botón NUEVO: catálogo típico para un equipo nuevo.
 NUEVO_PRESET_IDS = {
     "bginfo",
@@ -1095,6 +1124,17 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Instalar", "No hay ninguna aplicación seleccionada.")
             return
 
+        # "NetFX35" SIEMPRE de primero de todos, sin importar en qué
+        # posición del catálogo haya quedado insertado en `self.checkboxes`
+        # -- ver el docstring de `NETFX35_ITEM_ID` para el motivo. Va antes
+        # que la reordenada de "Windows-Updates-w11" de abajo (son
+        # independientes -- "netfx35" nunca es uno de los ítems que esa
+        # otra regla mueve).
+        netfx35_entry = self.checkboxes.get(NETFX35_ITEM_ID)
+        if netfx35_entry is not None and netfx35_entry[0] in selected:
+            netfx35_item = netfx35_entry[0]
+            selected = [netfx35_item] + [it for it in selected if it is not netfx35_item]
+
         # "Windows-Updates-w11" SIEMPRE al final de la cola, sin importar en
         # qué posición del catálogo haya quedado insertado en
         # `self.checkboxes` -- ver el docstring de `WINDOWS_UPDATES_ITEM_ID`
@@ -1102,10 +1142,24 @@ class MainWindow(QMainWindow):
         # caído en `selected` y se lo vuelve a agregar al final, en vez de
         # depender de su posición en `config/apps.json` (que un catálogo
         # personalizado desde AJUSTES podría cambiar).
+        #
+        # Pedido posterior (2026-09-04): NetSkopeClient, Crowdstrike y
+        # Manage Engine (ver `ITEMS_AFTER_WINDOWS_UPDATES`) deben quedar
+        # DESPUÉS de "Windows-Updates-w11" -- se agregan al mismo grupo
+        # final, en ese orden, justo después de él. Si alguno de los 3 no
+        # está seleccionado en esta corrida, simplemente no entra al grupo
+        # (no se agrega solo). Si "Windows-Updates-w11" NO está
+        # seleccionado, no se mueve nada de este grupo -- no hay nada de
+        # qué quedar "después", así que los 3 quedan en su posición normal
+        # del catálogo.
         windows_updates_entry = self.checkboxes.get(WINDOWS_UPDATES_ITEM_ID)
         if windows_updates_entry is not None and windows_updates_entry[0] in selected:
-            windows_updates_item = windows_updates_entry[0]
-            selected = [it for it in selected if it is not windows_updates_item] + [windows_updates_item]
+            trailing_items = [windows_updates_entry[0]]
+            for after_id in ITEMS_AFTER_WINDOWS_UPDATES:
+                after_entry = self.checkboxes.get(after_id)
+                if after_entry is not None and after_entry[0] in selected:
+                    trailing_items.append(after_entry[0])
+            selected = [it for it in selected if not any(it is t for t in trailing_items)] + trailing_items
 
         # "Copa ID (Asset Tag)" no es un instalador tradicional: se saca de
         # la cola normal y se aplica aparte, con el valor que haya en

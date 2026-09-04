@@ -453,6 +453,50 @@ que se usó (`"Tiempo de espera agotado (60 min)"` para
 "Windows-Updates-w11", `"... (30 min)"` para todo lo demás), en vez de
 un "30 min" fijo sin importar cuál era el límite configurado.
 
+#### Corrección (2026-09-04, pedido explícito de campo): "NetFX35" siempre de primero; NetSkope/Crowdstrike/Manage Engine siempre después de "Windows-Updates-w11"
+
+Dos reglas más de orden de cola, agregadas en `MainWindow._on_installar()`
+junto con la de arriba -- mismo mecanismo (sacar el ítem de donde haya
+caído en `selected` y reinsertarlo en la posición pedida, sin depender de
+su posición en `config/apps.json`, ver `NETFX35_ITEM_ID` e
+`ITEMS_AFTER_WINDOWS_UPDATES` en `app/ui/main_window.py`):
+
+1. **"NetFX35" (el ítem independiente, no el paso `netfx35_setup` dentro
+   de BFirst) va SIEMPRE de primero de toda la cola**, si está
+   seleccionado. `ensure_netfx35_installed()` ya es idempotente -- si
+   .NET Framework 3.5 ya estaba habilitado, correrlo de primero no cuesta
+   nada extra (reporta "ya estaba habilitado" y sigue la cola normal) --
+   así que la reordenada es incondicional, no depende de consultarle a
+   DISM de antemano si hacía falta o no (mismo criterio que
+   "Windows-Updates-w11" de arriba: se reordena siempre que esté
+   seleccionado).
+2. **NetSkopeClient (id `forcepoint`), Crowdstrike y Manage Engine van
+   SIEMPRE después de "Windows-Updates-w11"**, en ese orden, formando un
+   solo grupo al final de la cola junto con él (`[..., windows_updates,
+   forcepoint, crowdstrike, manage_engine]`) -- pedido explícito de campo,
+   sin un caso de log puntual detrás como los de arriba. Motivo más
+   probable (no confirmado, solo la explicación más razonable): los 3 son
+   agentes de seguridad/administración remota con ganchos a nivel de red
+   (NetSkope y Crowdstrike en particular interceptan tráfico), así que
+   instalarlos DESPUÉS de que Windows ya haya terminado de actualizarse
+   evita que interfieran con la propia descarga/instalación de
+   actualizaciones de Windows. Esta regla SOLO aplica si
+   "Windows-Updates-w11" también está seleccionado en esa corrida -- si no
+   lo está, no hay nada de qué quedar "después", así que los 3 quedan en
+   su posición normal del catálogo (Manage Engine, en particular, vive en
+   una columna bien distinta a las otras 2 -- si `windows_updates` no
+   corre esa vez, no tiene sentido moverlo igual). Si solo algunos de los
+   3 están seleccionados, solo esos entran al grupo final -- no se agregan
+   los demás solos.
+
+Las dos reglas conviven sin pisarse con la de "Windows-Updates-w11"
+siempre al final: "netfx35" nunca es parte de `ITEMS_AFTER_WINDOWS_UPDATES`
+ni de `[windows_updates]`, así que las 3 reordenadas se aplican una
+después de la otra sobre el mismo `selected` sin conflicto.
+`test_netfx35_first_and_after_windows_updates.py` prueba cada regla por
+separado y la combinación completa de las 3 a la vez, verificando el
+orden final exacto de la cola.
+
 ### RSAT: Herramientas de Active Directory (`app/rsat_setup.py`)
 
 Ítem independiente del catálogo (2da columna, junto a "REGISTRO EN AD"),

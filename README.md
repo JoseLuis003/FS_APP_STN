@@ -390,9 +390,13 @@ distinguen igual en el reporte con el mismo mecanismo).
 
 #### Corrección de fondo (2026-09-02, pedido explícito de campo): "Windows-Updates-w11" ahora corre SIEMPRE al final
 
-El problema de arriba (2026-08-19) y el de build de Windows distinto que
-documenta la sección de RSAT más abajo (0x800f0912, 2026-09-02) comparten
-la misma causa raíz: **"Windows-Updates-w11" corría en medio de la cola**
+El problema de arriba (2026-08-19) y el de 0x800f0912 que en su momento
+se documentó en la sección de RSAT más abajo (2026-09-02) parecían
+compartir la misma causa raíz -- aunque la investigación más completa del
+0x800f0912 (2026-09-04, ver esa sección) terminó descartando la hipótesis
+de "build de Windows distinto" para RSAT específicamente, la razón de
+fondo de esta corrección sigue siendo válida: **"Windows-Updates-w11"
+corría en medio de la cola**
 (en el catálogo, antes que NetFX35/RSAT/REGISTRO EN AD/BFirst, todos ellos
 en columnas posteriores), así que una actualización de Windows real podía
 terminar de aplicarse a mitad de una misma corrida y dejar al equipo con
@@ -504,11 +508,19 @@ orden final exacto de la cola.
 `ensure_rsat_ad_tools_installed()`. Instala "RSAT: Active Directory
 Domain Services and Lightweight Directory Services Tools" (el snap-in
 "Active Directory Users and Computers" — `dsa.msc` — y el módulo de
-PowerShell `ActiveDirectory`) vía `dism.exe /Online /Add-Capability`, con
-el mismo criterio que NetFX35 y DELL Command Update: nunca descarga nada
-de Windows Update (`/LimitAccess`), porque muchas estaciones de Copa no
-tienen salida a internet — usa como fuente los `.cab` locales en
-`<installers_base_path>\RSAT-ActiveDirectory-Offline\`.
+PowerShell `ActiveDirectory`) vía `dism.exe /Online /Add-Capability`.
+
+**Corrección de fondo (2026-09-04, pedido explícito de campo): ahora
+SIEMPRE va contra Windows Update/WSUS** (sin `/Source` ni
+`/LimitAccess`) — a diferencia de NetFX35 y DELL Command Update, que
+siguen usando archivos locales. Ver "Investigación completa: por qué se
+abandonó el `.cab` offline" más abajo para el porqué; en corto: no hay
+forma de mantener un `.cab` offline que no quede obsoleto con el tiempo,
+así que fingir que había una alternativa 100% offline ya no tenía
+sentido. Equipos sin salida a internet (ni a un WSUS con el contenido
+sincronizado) van a seguir sin poder instalar RSAT por este medio — pero
+esto YA era cierto con el `.cab` local (quedaba obsoleto igual), así que
+no es una regresión.
 
 No depende de la pantalla DOMINIO — esa pantalla ya funciona sin RSAT a
 propósito (usa ADSI directo, ver "Pantalla DOMINIO" más abajo) porque
@@ -529,29 +541,13 @@ El enlace existe para que, al revés, marcar solo esta casilla
 independiente también dispare REGISTRO EN AD — nunca deben quedar
 desincronizados.
 
-**Pedido explícito: la ruta de origen nunca queda fija a `C:\`.** Se
-arma en tiempo de ejecución a partir de `installers_base_path` (la misma
-ruta que ya resuelve dinámicamente `app/config.py` según desde dónde se
-abrió `FS_APP_STN.exe` — el disco `C:` o una unidad extraíble/USB con
-otra letra), igual que hace `netfx35_setup.py` para ubicar
-`NetFX35\sources\sxs`. `test_rsat_setup.py` prueba esto explícitamente
-con 2 letras de unidad distintas (`C:` y `D:`) para confirmar que el
-comando de DISM nunca queda "pegado" a una sola.
-
-**Qué colocar en `RSAT-ActiveDirectory-Offline\`:** NO la carpeta
-completa del ISO oficial de Microsoft "Languages and Optional Features"
-(~5 GB, con archivos de cientos de características en decenas de
-idiomas) — el paquete de esta capability puntual (nombre interno
-`Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0`) pesa unos pocos MB.
-Alcanza con copiar de esa ISO extraída:
-
-- `Microsoft-Windows-ActiveDirectory-DS-LDS-Tools-FoD-Package~31bf3856ad364e35~amd64~~.cab`
-  (paquete base, ~4.3 MB) y su equivalente `~wow64~~.cab` (~580 KB) —
-  ambos obligatorios, sin idioma.
-- El par `~amd64~<idioma>~.cab` / `~wow64~<idioma>~.cab` (~800 KB + ~100
-  KB) que coincida con el idioma de Windows de los equipos de Copa (ej.
-  `en-US`, `es-ES`, `es-MX`) — sin el idioma correcto, DISM falla con
-  "el origen no se encontró" aunque el paquete base sí esté.
+`installers_base_path` se sigue recibiendo (todo paso "python" lo recibe,
+ver `app/installer.py`) pero ahora se ignora a propósito — ya no hace
+falta ubicar ninguna carpeta local (mismo patrón que
+`run_ltp_shares_post_install`, que tampoco lo usa). Timeout de 30 min
+(`_TIMEOUT_SECONDS` en `app/rsat_setup.py`) en vez de los 10 min de
+antes: una descarga por red puede tardar bastante más que una copia
+local, mismo orden de magnitud que "Windows-Updates-w11".
 
 Mismo chequeo de "reinicio pendiente" que `netfx35_setup.py`
 (`is_reboot_pending()`, extraído a un módulo compartido,
@@ -562,11 +558,15 @@ riesgo de quedarse colgado hasta agotar el timeout si el equipo quedó en
 reinicio pendiente — se revisa ANTES de llamar a DISM para fallar rápido
 con un mensaje claro en vez de colgarse.
 
-#### Problema real de campo: error 0x800f0912 por build de Windows distinto (2026-09-02)
+#### Investigación completa: por qué se abandonó el `.cab` offline (2026-09-02 a 2026-09-04)
 
-Detectado en un log de instalación real: en la MISMA corrida, "REGISTRO EN
-AD" (paso 2/3, `rsat_ad_tools_setup`) y el ítem independiente "RSAT"
-fallaron con:
+Esto empezó como un problema puntual de campo y terminó siendo una
+investigación de varios días — vale la pena dejar registrado todo el
+recorrido (incluidas las 2 hipótesis descartadas) para que nadie vuelva a
+perder tiempo persiguiendo la misma pista falsa.
+
+**Síntoma original (2026-09-02):** un log real mostró "REGISTRO EN AD" y
+el ítem independiente "RSAT" fallando con:
 
 ```
 No se pudo instalar RSAT (AD DS/LDS Tools) (DISM terminó con código 2148469010) --
@@ -579,84 +579,73 @@ The source files could not be found using available local sources.
 
 `2148469010` es `0x800f0912` como entero con signo (lo que reportan tanto
 DISM como `subprocess` en Python) — el error estándar de Microsoft "The
-source files could not be found using available local sources". La causa
-NO es que falte el archivo (el `.cab` sí estaba en
-`RSAT-ActiveDirectory-Offline\`, como en cualquier otra corrida exitosa):
-DISM imprime dos versiones distintas en su propia salida, `Version`
-(el build del propio `dism.exe`) e `Image Version` (el build REAL de
-Windows que está corriendo en el equipo), y en este log NO coinciden —
-`10.0.26100.8972` contra `10.0.26200.9278`. Cuando el build de Windows del
-equipo no coincide con el build para el que está empaquetado el `.cab`
-(su manifiesto interno lo declara), DISM lo descarta como fuente válida
-aunque el archivo exista en el disco.
+source files could not be found using available local sources".
 
-La hipótesis más probable, a partir de este mismo log: "Windows-Updates-w11"
-corre ANTES en la misma cola de instalación y en esta corrida sí instaló
-actualizaciones reales — pudo haber subido el build de Windows del equipo
-a último momento, dejando al `.cab` de RSAT (empaquetado para el build
-anterior) desactualizado para ese mismo equipo, en la misma sesión de
-instalación.
+**Hipótesis 1 (descartada): build de Windows distinto (24H2 vs 25H2).**
+La sospecha inicial fue que `Version` (build del propio `dism.exe`) e
+`Image Version` (build real de Windows corriendo en el equipo) no
+coincidían — `10.0.26100.x` contra `10.0.26200.x` — y que hacía falta un
+`.cab` de RSAT empaquetado específicamente para build 26200 (Windows 11
+25H2). Se investigó a fondo (2026-09-04) y esto resultó ser una pista
+falsa: ese desfase entre `Version` e `Image Version` es NORMAL y
+PERMANENTE en cualquier máquina Windows 11 25H2 (25H2 se instala como un
+"enablement package" liviano sobre los binarios de 24H2 — `dism.exe`
+conserva su sello de versión 26100 para siempre, sin relación con este
+error). Confirmado además que Microsoft solo distribuye UNA ISO
+"Languages and Optional Features" para toda la rama 24H2/25H2 — no existe
+una versión "para build 26200" distinta. Una descarga nueva de esa misma
+ISO, meses después, trajo el `.cab` bytes-idénticos al que ya se tenía.
 
-**Ojo: esto NO es la única forma de llegar al mismo mismatch.** Aunque
-"Windows-Updates-w11" corra al final de la cola (ver la corrección de
-arriba), el mismo 0x800f0912 va a volver a pasar en **cualquier equipo
-imageado desde una ISO de Windows más nueva que el build para el que está
-empaquetado el `.cab` de `RSAT-ActiveDirectory-Offline\`** — en ese caso
-el mismatch ya existe desde ANTES de abrir FS_APP_STN (nadie lo cambió a
-mitad de una corrida), así que ningún orden de instalación lo evita. Ver
-el checklist de abajo.
+**Hipótesis 2 (descartada): política de grupo forzando WSUS.** Se
+sospechó de la política "Specify settings for optional component
+installation and component repair" (que puede hacer que DISM ignore
+`/Source`/`/LimitAccess` y solo intente WSUS). Descartada en campo:
+`reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Servicing"`
+en un equipo afectado no encontró esa clave configurada.
 
-**Esto es un problema de contenido/medio (el paquete `.cab` de
-`RSAT-ActiveDirectory-Offline\`), no un bug de este código** — ningún
-cambio en `rsat_setup.py` puede hacer que DISM acepte un `.cab`
-empaquetado para un build distinto al que ya quedó instalado. Lo único
-que se agregó es diagnóstico: `ensure_rsat_ad_tools_installed()` detecta
-específicamente el código `0x800f0912` (`_SOURCE_MISMATCH_RETURNCODE`),
-extrae la línea "Image Version" de la salida real de DISM
-(`_extract_image_version()`) y arma el mensaje de error explicando esta
-causa y citando el build real del equipo — para que la próxima vez que
-pase, el técnico no tenga que interpretar el 0x800f0912 a mano ni
-adivinar por qué "el archivo que sí está ahí" no sirve. La solución de
-fondo, cuando vuelva a pasar, es conseguir un paquete
-`RSAT-ActiveDirectory-Offline\` actualizado para el build de Windows que
-haya quedado en el equipo (y, por separado, vale la pena confirmar si
-conviene que "Windows-Updates-w11" no corra justo antes de RSAT en la
-misma cola, ya que fue lo que aparentemente cambió el build a mitad de
-instalación en este caso real).
+**Causa real confirmada:** en ese mismo equipo, `dism /online
+/Get-Packages | findstr /i ActiveDirectory` mostró **5 versiones
+sucesivas** del paquete
+`Microsoft-Windows-ActiveDirectory-DS-LDS-Tools-FoD-Package`, todas
+dentro de la rama 26100: `.1742 → .8457 → .8655 → .8875 → .9168`. Cada
+tanda de actualizaciones acumulativas de Windows revisa este paquete —
+el `.cab` de la ISO "Languages and Optional Features" es una foto fija
+del día que salió esa ISO (equivalente a `.1742`, la más vieja) y NUNCA
+se actualiza, sin importar cuántas veces se vuelva a descargar la misma
+ISO. DISM exige que el paquete offline que se le da coincida (o supere)
+el nivel de servicing que el equipo ya tiene para ese componente — un
+`.cab` más viejo queda descartado como fuente inválida con el mismo
+0x800f0912, exactamente como si el archivo no existiera. Confirmado en
+campo: la misma capability, en el mismo equipo, instaló sin problema vía
+Windows Update (que resuelve dinámicamente la revisión correcta,
+`.9168`) usando el instalador VB.NET original (que sí usa internet).
 
-#### Checklist: al adoptar una ISO de Windows nueva para imagear equipos
+**Por qué no se puede simplemente "conseguir un `.cab` actualizado":**
+se investigó cómo cosechar el paquete `.9168` ya funcionando de un
+equipo parchado, para reempaquetarlo como fuente offline — no existe
+ningún mecanismo oficial ni de comunidad para esto. Las 2 herramientas
+de comunidad que existen para RSAT offline (PSOfflineFOD,
+RSAT-FOD-Offline-Install) solo envuelven la MISMA ISO estática, no
+extraen nada de un equipo ya instalado. Tampoco hay un comando de DISM/
+PowerShell (ni `Export-WindowsCapabilitySource`, que suena a que haría
+esto) que pueda leer el almacén de componentes (WinSxS/CBS) de una
+máquina ya servida y reempaquetarlo como `.cab` redistribuible.
+UUPdump.net tampoco sirve: arma solo el sistema operativo base, no el
+contenido de Features on Demand. La recomendación oficial de Microsoft
+para flotas sin internet en Windows 11 24H2/25H2+ es WSUS +
+Configuration Manager con sincronización UUP local (mantiene el
+contenido de FOD al día automáticamente según van saliendo las
+actualizaciones) — eso es una decisión de infraestructura de Copa, fuera
+del alcance de este módulo; si se implementa, valdría la pena reconsiderar
+si RSAT debería volver a un `/Source` local apuntando a ese WSUS en vez
+de `/Online` a secas.
 
-Pedido explícito de campo (2026-09-02): en Copa, cada vez que sale una ISO
-de Windows 11 nueva, la descargan y la usan para imagear equipos — eso
-cambia el build "de fábrica" de las estaciones nuevas, sin que
-"Windows-Updates-w11" ni ningún otro paso de FS_APP_STN tenga que ver. Si
-el `.cab` de `RSAT-ActiveDirectory-Offline\` se queda con el build viejo,
-**todos** los equipos imageados con la ISO nueva van a fallar con
-0x800f0912 desde el primer intento — no es un caso aislado, ni algo que la
-corrección de "Windows-Updates-w11 al final" (ver arriba) resuelva, porque
-ahí el mismatch no lo generó ninguna corrida de FS_APP_STN.
-
-Checklist para cuando esto pase:
-
-1. **Actualizar `RSAT-ActiveDirectory-Offline\`** con el `.cab` de la
-   capability `Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0` que
-   corresponda al build de la ISO nueva (ver "Qué colocar en
-   `RSAT-ActiveDirectory-Offline\`" más arriba para la lista completa de
-   archivos: paquete base + wow64 + idioma de Windows de los equipos de
-   Copa) — se saca de la MISMA ISO nueva, extraída, en
-   `sources\sxs\` o del paquete "Languages and Optional Features" que
-   corresponda a esa versión.
-2. **Revisar también `NetFX35\sources\sxs\`** (`app/netfx35_setup.py`):
-   usa el mismo mecanismo de DISM con fuente local, así que en principio
-   corre el mismo riesgo si el build cambia lo suficiente — aunque hasta
-   ahora no se ha reportado un caso real de 0x800f0912 con NetFX35, más
-   vale confirmarlo cuando cambien de ISO en vez de asumir que nunca va a
-   pasar.
-3. Si un equipo ya imageado con la ISO nueva vuelve a fallar con
-   0x800f0912 a pesar de haber actualizado el `.cab`, el mensaje de error
-   ahora reporta el `Image Version` real del equipo (ver arriba) — sirve
-   para confirmar rápido si el paquete que se actualizó de verdad coincide
-   con ese build, o si hace falta uno más nuevo todavía.
+**Decisión final:** ya que ningún `.cab` offline se mantiene vigente por
+sí solo, y que Windows Update SÍ resuelve esto correctamente cuando hay
+conectividad, `ensure_rsat_ad_tools_installed()` ahora siempre va contra
+Windows Update/WSUS. La carpeta `RSAT-ActiveDirectory-Offline\` que
+usaba el enfoque anterior ya NO hace falta y puede eliminarse de la
+carpeta de instaladores.
 
 ### DELL Command Update (`app/dotnet_desktop_runtime_setup.py`)
 

@@ -421,6 +421,38 @@ natural del catálogo) y que, aun así, termina último en la cola pasada a
 `InstallManager.start()`, tanto si se seleccionan otros ítems junto con
 él como si se selecciona solo o no se selecciona en absoluto.
 
+#### Corrección (2026-09-04, pedido explícito de campo): timeout configurable por paso -- "Windows-Updates-w11" ahora tiene 60 min
+
+Con "Windows-Updates-w11" ya corriendo siempre al final (arriba), un
+reporte real de campo mostró un problema distinto: ese paso agotó el
+límite fijo de 30 minutos (`"Tiempo de espera agotado (30 min)"`) en un
+equipo real -- no colgado, instalando actualizaciones de Windows
+genuinas que esta vez tardaron más de 30 minutos en bajar/aplicarse (una
+tanda grande de actualizaciones acumuladas puede tardar perfectamente
+más que eso). Gracias a la corrección de arriba, este timeout ya no
+bloqueaba a ningún otro ítem de la cola mientras esperaba -- pero el
+ítem en sí seguía sin poder terminar.
+
+Antes de este cambio, los 30 minutos por paso (`InstallWorker.run()`,
+`app/installer.py`) eran un límite FIJO, igual para todos los pasos de
+todos los ítems del catálogo. Subirlo a 60 minutos en general hubiera
+tapado, para el resto del catálogo, un cuelgue real de otro instalador
+que sí debería seguir fallando rápido a los 30 minutos. En vez de eso,
+`AppItem.timeout_seconds` (`app/config.py`, default
+`DEFAULT_STEP_TIMEOUT_SECONDS` = 30 min) ahora es configurable por
+paso -- tanto el paso principal de un ítem como cualquiera de sus
+`extra_steps` puede traer su propia clave `"timeout_seconds"` en
+`config/apps.json` (mismo mecanismo que `exit_code_messages`/
+`success_codes`/`continue_on_error`: un valor por defecto compartido,
+con la posibilidad de una excepción puntual sin afectar a los demás).
+`"windows_updates"` quedó con `"timeout_seconds": 3600` (60 min); ningún
+otro ítem del catálogo lo necesitó, así que todos los demás siguen en el
+default de 30 minutos, sin cambios de comportamiento para ellos. El
+mensaje de `TimeoutExpired` también se ajustó para citar el límite REAL
+que se usó (`"Tiempo de espera agotado (60 min)"` para
+"Windows-Updates-w11", `"... (30 min)"` para todo lo demás), en vez de
+un "30 min" fijo sin importar cuál era el límite configurado.
+
 ### RSAT: Herramientas de Active Directory (`app/rsat_setup.py`)
 
 Ítem independiente del catálogo (2da columna, junto a "REGISTRO EN AD"),
@@ -692,9 +724,14 @@ el BIOS del equipo vía **Dell Command | Configure** (`cctk.exe`).
 
 ### SAP GUI 7.8 (`app/sap_gui_setup.py`)
 
-El ítem `sap_gui` tiene 5 pasos: `vstor_redist.exe` (principal),
-`NwSapSetup.exe`, el parche `GUI800_4-80006341.EXE`, `SAPSetupSLC.exe`, y
-por último `sap_gui_setup` (`installer_type: "python"`, ver más abajo).
+El ítem `sap_gui` tiene 6 pasos: `ensure_no_reboot_pending_for_sap_gui`
+(principal, `installer_type: "python"` -- chequeo de reinicio pendiente,
+ver más abajo), `vstor_redist.exe`, `NwSapSetup.exe`, el parche
+`GUI800_4-80006341.EXE`, `SAPSetupSLC.exe`, y por último `sap_gui_setup`
+(`installer_type: "python"`, ver más abajo). Antes del 2026-09-04,
+`vstor_redist.exe` era el paso principal -- pasó a ser el primero de
+`extra_steps` para dejarle el lugar de "principal" al chequeo de reinicio
+pendiente (ver el problema real de campo que lo motivó, más abajo).
 
 **Historial: se quitaron los switches de instalación desatendida de los 4
 pasos `.exe` (revisión anterior), y se volvieron a agregar más tarde
@@ -896,6 +933,41 @@ haya quedado funcional (el parche y `SAPSetupSLC.exe` sí llegaron a
 correr) — "Reinicio Pendiente" acá es una señal de que CONVIENE
 reiniciar y reintentar para confirmar, no una garantía de que hace
 falta.
+
+**Corrección (2026-09-04, pedido explícito de campo): chequeo proactivo de
+reinicio pendiente ANTES de empezar los 5 pasos, no solo el
+`exit_code_messages` de 144/145 en el paso 2.** Reporte real: en una
+corrida donde NetFX35/RSAT/BFirst ya fallaban por reinicio pendiente (ver
+`app/reboot_pending.py`), "SAP GUI 7.8" también falló, pero en cascada:
+`NwSapSetup.exe` (paso 2/5 de ese momento) con código 145 -- el mismo caso
+"Reinicio Pendiente" ya documentado arriba, porque `vstor_redist.exe`
+(paso 1/5) sí había instalado el VC++ pero necesitaba ese reinicio para
+terminar de registrarlo -- y el parche/`SAPSetupSLC.exe` (pasos 3/5 y 4/5)
+con código **129** cada uno, un código nuevo, no documentado hasta
+ahora. La hipótesis más probable (no confirmada con una fuente oficial de
+SAP, igual que la nota de "confianza menor" de arriba sobre estos 2
+mismos pasos): la misma condición de reinicio pendiente que bloqueó a
+`NwSapSetup.exe` también bloqueó al parche y a `SAPSetupSLC.exe` --
+ninguno de los dos puede terminar de resolver un registro que
+`NwSapSetup.exe` ni siquiera llegó a dejar a medias esta vez.
+
+El técnico ya sabía, por NetFX35/RSAT/BFirst fallando antes en la misma
+corrida, que había un reinicio pendiente -- pero "SAP GUI 7.8" no tenía
+forma de darse cuenta de eso por sí solo, y terminó gastando varios
+minutos en 3 pasos que iban a fallar de todos modos, con 2 códigos (145 y
+129 dos veces) en vez de un solo mensaje claro desde el principio.
+
+`ensure_no_reboot_pending_for_sap_gui()` (`app/sap_gui_setup.py`) ahora
+corre PRIMERO, como paso principal del ítem (`installer_type: "python"`,
+`installer: "sap_gui_reboot_check"` en `config/apps.json` --
+`vstor_redist.exe` pasó a ser el primero de `extra_steps`): si hay
+reinicio pendiente, corta la secuencia entera de una vez con **"Reinicio
+Pendiente"**, sin intentar ninguno de los 5 pasos siguientes -- en vez de
+la cascada 145/129/129. También se agregó `"sap_gui"` a
+`REBOOT_PENDING_ITEM_IDS` (`app/ui/main_window.py`), así que el aviso
+("cintillo") de reinicio pendiente en la pantalla APPS ahora también
+menciona "SAP GUI 7.8" de entrada, igual que ya hacía con
+NetFX35/RSAT/REGISTRO EN AD/BFirst.
 
 Paso extra (`installer_type: "python"`, `sap_gui_setup`), el ÚLTIMO de
 los 4 pasos extra del ítem `sap_gui` (después de `NwSapSetup.exe`, el

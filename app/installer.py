@@ -15,12 +15,12 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from app.appshell_post_install import run_appshell_post_install
 from app.branding_setup import apply_bginfo_registration, apply_branding_setup
-from app.config import AppItem, LOGS_DIR
+from app.config import DEFAULT_STEP_TIMEOUT_SECONDS, AppItem, LOGS_DIR
 from app.dotnet_desktop_runtime_setup import ensure_dotnet_desktop_runtime_installed
 from app.manage_engine_setup import apply_manage_engine_setup
 from app.netfx35_setup import ensure_netfx35_installed
 from app.rsat_setup import ensure_rsat_ad_tools_installed
-from app.sap_gui_setup import apply_sap_gui_setup
+from app.sap_gui_setup import apply_sap_gui_setup, ensure_no_reboot_pending_for_sap_gui
 from app.shares_setup import run_ltp_shares_post_install
 from app.shortcuts import (
     copy_bfirst_assets_and_shortcut,
@@ -144,6 +144,7 @@ def _python_step_handlers() -> dict:
         "mto_shortcuts": copy_mto_assets_and_shortcuts,
         "bfirst_assets": copy_bfirst_assets_and_shortcut,
         "sap_gui_setup": apply_sap_gui_setup,
+        "sap_gui_reboot_check": ensure_no_reboot_pending_for_sap_gui,
         "vpn_setup": apply_vpn_setup,
         "netfx35_setup": ensure_netfx35_installed,
         "dotnet_desktop_runtime_setup": ensure_dotnet_desktop_runtime_installed,
@@ -194,20 +195,34 @@ def build_command(item: AppItem, installer_path: Path) -> list[str]:
 
 def _iter_steps(item: AppItem):
     """Genera (installer_relativo, silent_args, installer_type,
-    exit_code_messages, continue_on_error, success_codes) para el paso
-    principal de `item` y luego cada uno de `item.extra_steps`, en el mismo
-    orden en que deben ejecutarse. `exit_code_messages` (ver `AppItem` en
-    app/config.py) es un dict {código_de_salida_como_string: mensaje} con
-    mensajes a mostrar en vez del genérico "código de salida N" cuando ESE
-    paso falla con un código puntual conocido (ej. SAP GUI 7.8, códigos
-    144/145 -- ver `InstallWorker.run`). `continue_on_error` (ver `AppItem`,
-    solo disponible en pasos de `extra_steps` -- el paso principal siempre
-    lo trae en `False`) le dice a `InstallWorker.run` que NO detenga la
+    exit_code_messages, continue_on_error, success_codes, timeout_seconds)
+    para el paso principal de `item` y luego cada uno de
+    `item.extra_steps`, en el mismo orden en que deben ejecutarse.
+    `exit_code_messages` (ver `AppItem` en app/config.py) es un dict
+    {código_de_salida_como_string: mensaje} con mensajes a mostrar en vez
+    del genérico "código de salida N" cuando ESE paso falla con un código
+    puntual conocido (ej. SAP GUI 7.8, códigos 144/145 -- ver
+    `InstallWorker.run`). `continue_on_error` (ver `AppItem`, solo
+    disponible en pasos de `extra_steps` -- el paso principal siempre lo
+    trae en `False`) le dice a `InstallWorker.run` que NO detenga la
     secuencia si ESE paso termina con código de salida distinto de éxito.
     `success_codes` (ver `AppItem`) es una lista de códigos ADICIONALES que
     ESE paso puntual debe tratar como éxito (ej. DELL Command Update,
-    código 2 -- ver `InstallWorker.run`)."""
-    yield item.installer, item.silent_args, item.installer_type, item.exit_code_messages, False, item.success_codes
+    código 2 -- ver `InstallWorker.run`). `timeout_seconds` (ver `AppItem`)
+    es el límite de este paso puntual antes de darlo por colgado --
+    `DEFAULT_STEP_TIMEOUT_SECONDS` si no se especifica, tanto para el paso
+    principal como para cada paso de `extra_steps` (ej.
+    "Windows-Updates-w11", que necesita más que el límite general -- ver
+    `AppItem.timeout_seconds`)."""
+    yield (
+        item.installer,
+        item.silent_args,
+        item.installer_type,
+        item.exit_code_messages,
+        False,
+        item.success_codes,
+        item.timeout_seconds,
+    )
     for step in item.extra_steps:
         yield (
             step.get("installer", ""),
@@ -216,6 +231,7 @@ def _iter_steps(item: AppItem):
             step.get("exit_code_messages", {}),
             step.get("continue_on_error", False),
             step.get("success_codes", []),
+            step.get("timeout_seconds", DEFAULT_STEP_TIMEOUT_SECONDS),
         )
 
 
@@ -276,6 +292,7 @@ class InstallWorker(QThread):
             exit_code_messages,
             continue_on_error,
             success_codes,
+            timeout_seconds,
         ) in enumerate(steps, start=1):
             step_tag = f" (paso {index}/{total_steps})" if total_steps > 1 else ""
 
@@ -338,11 +355,18 @@ class InstallWorker(QThread):
                     cwd=str(installer_path.parent),
                     capture_output=True,
                     text=True,
-                    timeout=30 * 60,  # 30 minutos por paso
+                    timeout=timeout_seconds,  # ver `AppItem.timeout_seconds` -- 30 min por defecto, configurable por paso
                     creationflags=NO_CONSOLE_WINDOW,
                 )
             except subprocess.TimeoutExpired:
-                msg = f"Tiempo de espera agotado (30 min){step_tag}."
+                timeout_minutes = timeout_seconds / 60
+                # Sin decimales cuando cae justo en un número entero de
+                # minutos (el caso normal: 30, 60, ...) -- con decimales
+                # solo si alguien configuró algo raro como 90 segundos.
+                timeout_label = (
+                    f"{timeout_minutes:g} min" if timeout_minutes == int(timeout_minutes) else f"{timeout_minutes:.1f} min"
+                )
+                msg = f"Tiempo de espera agotado ({timeout_label}){step_tag}."
                 self.logger.write(f"{item.label}: ERROR - {msg}")
                 self.finished_item.emit(item.id, False, msg)
                 return

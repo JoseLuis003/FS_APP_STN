@@ -119,7 +119,16 @@ REGISTRO_AD_ITEM_ID = "registro_ad"
 # `rsat_ad_tools_setup` -- el mismo reporte de campo confirmó que también
 # falla en este estado, no solo el ítem "RSAT (Herramientas de Active
 # Directory)" standalone.
-REBOOT_PENDING_ITEM_IDS = ("netfx35", "rsat_ad_tools", "registro_ad", "bfirst")
+#
+# "sap_gui" se agregó después (reporte de campo 2026-09-04): aunque no usa
+# DISM, un reinicio pendiente igual lo deja en cascada -- el VC++
+# Redistributable del paso 1/5 (`vstor_redist.exe`) necesita ese reinicio
+# para terminar de registrarse, y sin él `NwSapSetup.exe` (paso 2/5) falla
+# con 144/145, arrastrando al parche y a `SAPSetupSLC.exe` (pasos 3/5 y
+# 4/5) detrás -- 3 fallos en cascada en vez de un solo mensaje claro. Ver
+# `ensure_no_reboot_pending_for_sap_gui` en `app/sap_gui_setup.py`, que
+# además corta la secuencia de una vez si se intenta igual.
+REBOOT_PENDING_ITEM_IDS = ("netfx35", "rsat_ad_tools", "registro_ad", "bfirst", "sap_gui")
 
 # Id del ítem "Windows-Updates-w11" (`Scripts/Install_WUSA.ps1`). Pedido
 # explícito de campo (2026-09-02, mismo día que el reporte de arriba):

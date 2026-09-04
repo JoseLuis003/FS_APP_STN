@@ -82,6 +82,13 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 ASSETS_DIR = get_assets_dir()
 SCRIPTS_DIR = get_scripts_dir()
 
+# Timeout por defecto (en segundos) de UN paso de instalación
+# (`InstallWorker.run()`, app/installer.py) -- 30 minutos, el mismo límite
+# fijo que existía antes de que `AppItem.timeout_seconds` fuera
+# configurable por ítem/paso (ver ahí para el caso real de campo que pidió
+# poder subirlo para un paso puntual sin tocar los demás).
+DEFAULT_STEP_TIMEOUT_SECONDS = 30 * 60
+
 
 @dataclass
 class AppItem:
@@ -195,6 +202,25 @@ class AppItem:
     # cuando pasa a ser éxito gracias a `success_codes` (nunca los dos a
     # la vez para el mismo código, son ramas mutuamente excluyentes).
     success_codes: list[int] = field(default_factory=list)
+
+    # Segundos que `InstallWorker` espera a que ESTE paso puntual termine
+    # antes de darlo por colgado (`subprocess.TimeoutExpired`) -- por
+    # defecto, `DEFAULT_STEP_TIMEOUT_SECONDS` (30 min), igual para todos
+    # los pasos como era antes de que existiera este campo. Pedido
+    # explícito de campo (2026-09-04): "Windows-Updates-w11" agotó ese
+    # límite global en un equipo real instalando actualizaciones de
+    # Windows genuinas (no colgado -- de hecho, gracias a la corrección de
+    # "Windows-Updates-w11 al final de la cola", ya no bloqueaba a ningún
+    # otro ítem mientras esperaba) -- Windows Update puede tardar
+    # legítimamente más de 30 minutos según cuántas actualizaciones haya
+    # pendientes, así que ese ítem puntual necesita más margen sin tener
+    # que subírselo a TODOS los demás pasos del catálogo (que en su
+    # mayoría sí deberían terminar en minutos, y para los que un límite
+    # más alto solo tapiaría un cuelgue real de verdad más tarde). Cada
+    # paso de `extra_steps` puede tener su propia clave
+    # `"timeout_seconds"` con el mismo formato (ver `_iter_steps` en
+    # app/installer.py).
+    timeout_seconds: int = DEFAULT_STEP_TIMEOUT_SECONDS
 
     def resolved_installer_path(self, installers_base_path: str) -> Path:
         base = Path(installers_base_path)
@@ -376,6 +402,7 @@ def load_app_columns(source_file: Path = APPS_FILE) -> list[AppColumn]:
                     extra_steps=it.get("extra_steps", []),
                     exit_code_messages=it.get("exit_code_messages", {}),
                     success_codes=it.get("success_codes", []),
+                    timeout_seconds=it.get("timeout_seconds", DEFAULT_STEP_TIMEOUT_SECONDS),
                 )
                 for it in grp.get("items", [])
             ]

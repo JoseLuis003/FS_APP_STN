@@ -27,13 +27,19 @@ ACTUAL (`C:\\Users\\<usuario>\\...`), resuelto vía la variable de entorno
 Los pasos 1, 2 y 4 sí son fail-loud (paran la cola y marcan error si
 fallan) -- son la parte que de verdad deja SAP GUI usable. Solo el
 borrado del acceso directo viejo del paso 3 es best-effort, por ser una
-limpieza cosmética sin impacto funcional si no se logra."""
+limpieza cosmética sin impacto funcional si no se logra.
+
+Este módulo también tiene `ensure_no_reboot_pending_for_sap_gui()`, el
+paso PRINCIPAL (no un `extra_steps`) del ítem `sap_gui` -- ver su
+docstring para el caso real de campo que lo motivó."""
 from __future__ import annotations
 
 import getpass
 import os
 import shutil
 from pathlib import Path
+
+from app.reboot_pending import is_reboot_pending
 
 # Carpeta de instaladores (relativa a `installers_base_path`) donde viven
 # los 3 archivos que copia este paso.
@@ -60,6 +66,46 @@ SAP_PUBLIC_DESKTOP_DIR = Path(r"C:\Users\Public\Desktop")
 class SapGuiSetupError(Exception):
     """Error esperado al aplicar el paso extra de "SAP GUI 7.8". El
     mensaje ya viene listo para mostrárselo tal cual al técnico."""
+
+
+def ensure_no_reboot_pending_for_sap_gui(installers_base_path: str) -> str:
+    """Pensado para colgarse como el PRIMER paso ("principal", no
+    `extra_steps`) del ítem `sap_gui` en `config/apps.json`
+    (`installer_type: "python"`, `installer: "sap_gui_reboot_check"`) --
+    antes de `vstor_redist.exe` (que ahora es el primero de
+    `extra_steps`) y de los demás pasos .exe de la secuencia.
+
+    Caso real de campo (2026-09-04): en una corrida donde el equipo
+    arrancó con un reinicio pendiente (por la unión al dominio y el
+    hotfix .msu que corre antes en la misma cola -- ver
+    `app/reboot_pending.py`), "SAP GUI 7.8" falló en cascada: paso 2/5
+    (`NwSapSetup.exe`) con código 145 (que YA tenía un mensaje
+    configurado en `exit_code_messages`: "Reinicio Pendiente", porque el
+    VC++ Redistributable que instala el paso 1/5 necesita ese reinicio
+    para terminar de registrarse), y los pasos 3/5 y 4/5 (el parche y
+    `SAPSetupSLC.exe`) con código 129 -- casi con certeza la misma causa
+    en cascada, ya que ninguno de los dos puede completar nada si
+    `NwSapSetup.exe` no llegó a instalar la base. En esa misma corrida,
+    NetFX35/RSAT/BFirst fallaron por el mismo motivo (ver
+    `app/reboot_pending.py`), así que el reinicio pendiente ya se sabía
+    de entrada -- pero SAP GUI no tenía forma de enterarse ANTES de
+    gastar ~5 minutos en 3 pasos que iban a fallar de todos modos.
+
+    Con este chequeo, si hay un reinicio pendiente la secuencia entera se
+    corta acá (es el paso PRINCIPAL, así que un fallo detiene todo el
+    ítem -- no hace falta `continue_on_error`), con UN mensaje claro en
+    vez de 3 códigos de salida sin contexto. Si no hay reinicio
+    pendiente, no hace nada más que devolver un detalle corto -- el resto
+    de la secuencia sigue normal."""
+    if is_reboot_pending():
+        raise SapGuiSetupError(
+            "Reinicio Pendiente: hay un reinicio de Windows pendiente -- si se sigue igual, el "
+            "componente VC++ Redistributable (paso 1/5, vstor_redist.exe) va a necesitar ese mismo "
+            "reinicio para terminar de registrarse, y NwSapSetup.exe (paso 2/5) va a fallar con "
+            "eso (códigos 144/145), arrastrando al parche y a SAPSetupSLC.exe (pasos 3/5 y 4/5) "
+            "detrás. Reinicia el equipo y vuelve a marcar esta casilla."
+        )
+    return "Sin reinicio pendiente -- se continúa con la instalación de SAP GUI 7.8"
 
 
 def _current_username() -> str:

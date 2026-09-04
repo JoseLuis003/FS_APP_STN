@@ -20,7 +20,7 @@
             { "id": "crowdstrike",       "label": "Crowdstrike",               "installer": "Crowdstrike/WindowsSensor.exe","silent_args": "/install /passive /norestart CID=A51E4A84E9B3404B9AC8B70A1A8B7E8E-74", "installer_type": "exe", "default_checked": false, "enabled": true, "version": "N/D" },
             { "id": "google_chrome",     "label": "Google Chrome",             "installer": "Google Chrome/googlechromestandaloneenterprise64.msi", "silent_args": "/passive", "installer_type": "msi", "default_checked": false, "enabled": true, "version": "151.0.7922.109" },
             { "id": "ms_teams_work",     "label": "Microsoft Teams",           "installer": "Microsoft Teams/Install.bat",  "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" },
-            { "id": "windows_updates",   "label": "Windows-Updates-w11",       "installer": "WUSA/Install_WUSA.ps1",        "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D" }
+            { "id": "windows_updates",   "label": "Windows-Updates-w11",       "installer": "WUSA/Install_WUSA.ps1",        "silent_args": "",                                "installer_type": "script", "default_checked": false, "enabled": true, "version": "N/D", "timeout_seconds": 3600 }
           ]
         }
       ]
@@ -53,8 +53,9 @@
                 { "installer": "BFirst/setupbolapp.exe", "silent_args": "/S /v/qn", "installer_type": "exe" },
                 { "installer": "bfirst_assets", "silent_args": "", "installer_type": "python" }
               ] },
-            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/q /norestart",       "installer_type": "exe", "default_checked": false, "enabled": true, "version": "7.8",
+            { "id": "sap_gui",          "label": "SAP GUI 7.8",               "installer": "sap_gui_reboot_check", "silent_args": "",       "installer_type": "python", "default_checked": false, "enabled": true, "version": "7.8",
               "extra_steps": [
+                { "installer": "SAP_GUI_7.80/Win32/vstor_redist.exe", "silent_args": "/q /norestart", "installer_type": "exe" },
                 { "installer": "SAP_GUI_7.80/Win32/Setup/NwSapSetup.exe", "silent_args": "/silent /product=SAPGUI", "installer_type": "exe", "continue_on_error": true,
                   "exit_code_messages": {
                     "144": "Reinicio Pendiente: el componente VC++ que se acaba de instalar necesita que reinicies el equipo antes de continuar. Reinicia y vuelve a marcar esta casilla.",
